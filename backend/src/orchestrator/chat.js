@@ -9,6 +9,29 @@ import { buildSystemPrompt, buildMessages, ragParams, extractEmotion } from '../
 import { chunkText } from '../rag/chunker.js';
 import { storeAudio } from '../audioCache.js';
 import { waguriPersona } from '../personaSeed.js';
+import { needsLanguageRepair, languageRepairNudge } from '../lang/guard.js';
+
+// Language self-heal: free-tier models in the failover pool violate the Hinglish
+// contract at different rates. When a reply comes back in the wrong language,
+// retry ONCE with an escalated instruction appended (bounded latency). The retry
+// result wins only if it actually produced text; otherwise the original stays.
+async function repairLanguage(callLLM, messages, options, userText, first) {
+  let { emotion, reply } = first;
+  if (!needsLanguageRepair(userText, reply)) return { emotion, reply, repaired: false };
+  try {
+    const retry = await callLLM(
+      [...messages, { role: 'system', content: languageRepairNudge(userText) }],
+      options,
+    );
+    const second = extractEmotion(retry.text);
+    if (second.reply.trim()) {
+      return { emotion: second.emotion !== 'neutral' ? second.emotion : emotion, reply: second.reply, repaired: true };
+    }
+  } catch (e) {
+    console.error('[lang] self-heal retry failed, keeping original reply:', e.message);
+  }
+  return { emotion, reply, repaired: false };
+}
 
 export function createChatOrchestrator({ storage, callLLM, embedder, synthesize, moodEngine }) {
   async function getPersona(personaId) {
@@ -22,7 +45,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
   }
 
   // Shared tail of every reply: mood resolution + persistence + TTS + response shape.
-  async function finishReply({ persona, conversationId, reply, taggedEmotion, userMessageId, llmResult, memoriesCount, exchangeText, userText }) {
+  async function finishReply({ persona, conversationId, reply, taggedEmotion, userMessageId, llmResult, memoriesCount, exchangeText, userText, languageRepaired }) {
     const mood = moodEngine ? await moodEngine.detect(reply, taggedEmotion, persona, userText) : null;
     const expression = moodEngine ? moodEngine.expressionFor(mood, taggedEmotion) : (taggedEmotion || 'neutral');
 
@@ -68,6 +91,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
       meta: {
         llm: llmResult ? { provider: llmResult.provider, model: llmResult.model, latency_ms: llmResult.latencyMs } : null,
         memories_used: memoriesCount || 0,
+        language_repaired: !!languageRepaired,
       },
     };
     if (conversationId) out.conversation_id = conversationId;
@@ -107,12 +131,12 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
     // steps 4-5: inject chunks + last N raw messages, call LLM through the pool.
     // characters.base_temperature (Supabase) drives sampling; null = provider default.
     const systemPrompt = buildSystemPrompt(persona, memories);
-    const llmResult = await callLLM(
-      buildMessages({ systemPrompt, recentMessages: recent, userMessage: message }),
-      persona.base_temperature != null ? { temperature: persona.base_temperature } : {},
-    );
+    const llmMessages = buildMessages({ systemPrompt, recentMessages: recent, userMessage: message });
+    const llmOptions = persona.base_temperature != null ? { temperature: persona.base_temperature } : {};
+    const llmResult = await callLLM(llmMessages, llmOptions);
 
-    const { emotion, reply } = extractEmotion(llmResult.text);
+    const first = extractEmotion(llmResult.text);
+    const { emotion, reply, repaired } = await repairLanguage(callLLM, llmMessages, llmOptions, message, first);
     return finishReply({
       persona,
       conversationId: conversation.id,
@@ -123,6 +147,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
       memoriesCount: memories.length,
       exchangeText: `User said: ${message}\n${persona.name} replied: ${reply}`,
       userText: message,
+      languageRepaired: repaired,
     });
   }
 
@@ -147,6 +172,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
 
     const systemPrompt = [
       `You are ${persona.name}, in a private chat with your close friend. Stay fully in character — never say you are an AI.`,
+      `Your natural voice is Hinglish (Roman-script Hindi-English mix, like "Arre yaar, kya soch rahi thi main..."). ALWAYS write in Hinglish, even if the recent chat was in English.`,
       `They have been quiet for about ${idleMin} minute(s).`,
       '',
       'Recent context:',
@@ -157,7 +183,11 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
     ].join('\n');
 
     const llmResult = await callLLM([{ role: 'system', content: systemPrompt }]);
-    const { emotion, reply } = extractEmotion(llmResult.text);
+    const first = extractEmotion(llmResult.text);
+    // userText '' -> the guard enforces the Hinglish voice unconditionally here.
+    const { emotion, reply, repaired } = await repairLanguage(
+      callLLM, [{ role: 'system', content: systemPrompt }], {}, '', first,
+    );
 
     return finishReply({
       persona,
@@ -167,6 +197,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
       userMessageId: null,
       llmResult,
       memoriesCount: 0,
+      languageRepaired: repaired,
     });
   }
 

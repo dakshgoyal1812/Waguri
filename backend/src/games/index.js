@@ -7,6 +7,7 @@
 // playing. Sessions live in memory — single-user private app (restart = new game).
 //
 // Games: tictactoe (board), rps (scored rounds), twentyq (she guesses your thing).
+import { needsLanguageRepair, languageRepairNudge } from '../lang/guard.js';
 
 const MAX_TICTACTOE_NARRATE_CHARS = 400;
 
@@ -53,20 +54,31 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
 
   // Ask her LLM brain for an in-character line; strips tags. Never throws —
   // a narration failure falls back to a plain line so the game continues.
+  // Language self-heal: if the line came back in plain English, retry once with
+  // the escalated Hinglish instruction (the canned fallbacks are Hinglish too).
   async function banter(systemPrompt, fallback) {
     try {
       const persona = await getPersona();
       const prompt = [
         persona ? `You are ${persona.name}. Stay fully in character — playful, warm, never say you are an AI.` : 'Stay in character.',
         systemPrompt,
+        'Your natural voice is Hinglish (Roman-script Hindi-English mix, like "Arre wah, jeet gayi main!"). ALWAYS reply in Hinglish, even if the human wrote in English.',
         'Start with an emotion tag [happy]/[sad]/[surprised]/[relaxed]/[neutral]. Keep it to 1-2 short sentences.',
       ].join('\n');
-      const res = await callLLM([{ role: 'system', content: prompt }]);
+      const messages = [{ role: 'system', content: prompt }];
+      const res = await callLLM(messages);
       const m = String(res.text).match(/^\s*\[(?:mood:\s*)?(happy|angry|sad|surprised|relaxed|neutral|excited|curious)\]\s*/i);
-      return {
-        text: (m ? res.text.slice(m[0].length) : String(res.text).trim()).slice(0, MAX_TICTACTOE_NARRATE_CHARS),
-        emotion: m ? m[1].toLowerCase() : null,
-      };
+      let text = (m ? res.text.slice(m[0].length) : String(res.text).trim()).slice(0, MAX_TICTACTOE_NARRATE_CHARS);
+      const emotion = m ? m[1].toLowerCase() : null;
+      if (!needsLanguageRepair('', text)) return { text, emotion };
+      // one bounded repair retry
+      const retry = await callLLM([...messages, { role: 'system', content: languageRepairNudge('') }]);
+      const m2 = String(retry.text).match(/^\s*\[(?:mood:\s*)?(happy|angry|sad|surprised|relaxed|neutral|excited|curious)\]\s*/i);
+      const text2 = (m2 ? retry.text.slice(m2[0].length) : String(retry.text).trim()).slice(0, MAX_TICTACTOE_NARRATE_CHARS);
+      if (text2 && !needsLanguageRepair('', text2)) {
+        return { text: text2, emotion: m2 ? m2[1].toLowerCase() : emotion };
+      }
+      return { text, emotion };
     } catch (e) {
       return { text: fallback, emotion: null };
     }
@@ -108,7 +120,7 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
     const ban = await banter(
       `We are playing tic-tac-toe. ${line ? `The human just played square ${herMoveNum}. ` : ''}${outcomeText} Score — you: ${session.score.her}, human: ${session.score.you}, draws: ${session.score.draws}. React to the move/result in character.` +
       (outcome ? ' Offer a rematch!' : ''),
-      outcome === 'she_won' ? 'Yay, I win!' : outcome === 'you_won' ? 'Ahh you got me!' : 'Good move!'
+      outcome === 'she_won' ? 'Yay, main jeet gayi!' : outcome === 'you_won' ? 'Ahh, is baar tum jeet gaye!' : 'Waah, badhiya move!'
     );
     session.lastMove = herMoveNum ?? null;
     session.finished = !!outcome;
@@ -144,7 +156,7 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
 
     const ban = await banter(
       `Rock-paper-scissors round result: human threw ${userThrow}, you threw ${herThrow} — ${result === 'draw' ? 'a draw' : result === 'she_won' ? 'YOU won the round' : 'the HUMAN won the round'}. Score — you: ${session.score.her}, human: ${session.score.you}, draws: ${session.score.draws}. React in character and tease/playful about their pattern if any.`,
-      `I threw ${herThrow}!`
+      `Maine ${herThrow} throw kiya!`
     );
     return { banterText: ban.text, emotion: ban.emotion, herThrow, result };
   }
@@ -157,7 +169,7 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
     const finishedIn = session.round >= session.maxRounds;
     const ban = await banter(
       `You are playing 20 questions: the human thinks of something, you guess it with yes/no questions. Answers so far:\n${qa}\nThe human just answered: "${userAnswer}".\n${finishedIn ? 'That was your LAST question — you must now make your FINAL GUESS of what the thing is (say "My guess is: ...").' : `Ask your next yes/no question (question ${session.round + 1} of ${session.maxRounds}).`}`,
-      finishedIn ? 'My guess is... a cat!' : 'Hmm, is it alive?'
+      finishedIn ? 'Mera final guess hai... a cat!' : 'Hmm, kya woh zinda hai?'
     );
     session.qa.push({ question: ban.text, answer: userAnswer });
     session.finished = finishedIn;
@@ -181,9 +193,9 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
       sessions.set(sessionId, session);
 
       const openers = {
-        tictactoe: "Let's play tic-tac-toe! You are X and you go first — pick a square 1 to 9!",
-        rps: 'Rock paper scissors! Throw your pick — best of luck reading my soul~',
-        twentyq: "Twenty questions! Think of something — anything — and answer my yes/no questions. Ready? First one: is it alive?",
+        tictactoe: 'Chalo tic-tac-toe khelte hain! Tum X ho aur pehla move tumhara — 1 se 9 tak koi bhi square chuno!',
+        rps: 'Rock paper scissors! Apna choice batao — dekhte hain tum meri soul padh pate ho ya nahi~',
+        twentyq: 'Twenty questions khelte hain! Kuch bhi socho — aur mere haan/na sawaalon ke jawab do. Ready? Pehla sawaal: kya woh zinda hai?',
       };
       // Opener through her voice; LLM banter if available, canned line otherwise.
       const ban = await banter(

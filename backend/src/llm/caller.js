@@ -4,6 +4,13 @@
 // model is tried (PRD section 13: free model availability rotates, keep as config).
 // A single key's failure must never surface to the user (PRD section 12) — only
 // total pool exhaustion throws PoolExhaustedError.
+//
+// Failure classification (bulletproofing):
+//   - 429                    -> key cooldown (60s or midnight UTC), next key
+//   - 401/402/403            -> key exhausted (invalid/no credits), next key
+//   - empty/garbage 200 body -> KEY IS FINE: try the next MODEL on the same key
+//   - 5xx / timeout / network-> try the next MODEL on the same key first; only
+//                              when every model failed is the key cooled briefly
 import { config } from '../config.js';
 import { chatCompletion, LLMHttpError } from './openaiCompat.js';
 import { cooldownExpiryFrom429, PoolExhaustedError } from '../keys/keyPool.js';
@@ -40,9 +47,13 @@ export function createLLMCaller(keyPool) {
         }
         continue; // keyless tier failed — try the next tier
       }
+
       for (;;) {
         const key = await keyPool.getNextKey(provider);
         if (!key) break; // tier exhausted -> fall to next tier
+
+        let keyFailed = false; // 429/401-class: this key is done, stop trying models
+        let anyFailure = false; // any model failure at all on this key
 
         for (const model of prov.models) {
           const started = Date.now();
@@ -69,17 +80,29 @@ export function createLLMCaller(keyPool) {
             const latencyMs = Date.now() - started;
             await keyPool.recordUsage(key.id, status, latencyMs);
             errors.push(`${provider}/${key.account_label}/${model}: HTTP ${status} ${String(e.message).slice(0, 200)}`);
+            anyFailure = true;
 
             if (status === 429) {
-              // Per-minute limit -> 60s; daily quota -> midnight UTC (PRD section 9.3)
+              // Per-minute limit -> 60s; daily quota -> midnight UTC (PRD section 9.3).
+              // Same key would 429 on the next model too — bail to the next key.
               await keyPool.markCooldown(key.id, cooldownExpiryFrom429(e.message));
-            } else if (status === 401 || status === 402 || status === 403) {
-              await keyPool.markExhausted(key.id); // invalid key / no credits
-            } else {
-              // 5xx / network: brief cooldown so the next attempt uses another key
-              await keyPool.markCooldown(key.id, new Date(Date.now() + config.cooldownPerMinuteMs));
+              keyFailed = true;
+              break;
             }
+            if (status === 401 || status === 402 || status === 403) {
+              await keyPool.markExhausted(key.id); // invalid key / no credits
+              keyFailed = true;
+              break;
+            }
+            // 5xx / timeout / network / empty-200: the key itself may be fine —
+            // fall through and try the next model on THIS key.
           }
+        }
+
+        if (anyFailure && !keyFailed) {
+          // Every model on this key failed without a key-level verdict: brief
+          // cooldown so the rotation moves to another key.
+          await keyPool.markCooldown(key.id, new Date(Date.now() + config.cooldownPerMinuteMs));
         }
       }
     }
