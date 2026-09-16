@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, Moon, Sun, ImageIcon } from 'lucide-react';
+import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, ImageIcon } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import GamePanel from './components/GamePanel.jsx';
@@ -35,30 +35,28 @@ export default function App() {
   const [persona, setPersona] = useState(null);
 
   const [currentEmotion, setCurrentEmotion] = useState('happy');
-  // Expressions fade back to neutral after ~7.5s — a mood should be a reaction,
-  // not a permanent mask (airi-style).
-  useEffect(() => {
-    if (currentEmotion === 'neutral') return;
-    const t = setTimeout(() => setCurrentEmotion('neutral'), 7500);
-    return () => clearTimeout(t);
-  }, [currentEmotion]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [activeAudioUrl, setActiveAudioUrl] = useState(null);
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
   const [isBackendHealthy, setIsBackendHealthy] = useState(true);
 
+  // Expressions stay lively while speaking, and gently fade back to neutral ~10s after.
+  useEffect(() => {
+    if (currentEmotion === 'neutral' || isSpeaking) return;
+    const t = setTimeout(() => setCurrentEmotion('neutral'), 10000);
+    return () => clearTimeout(t);
+  }, [currentEmotion, isSpeaking]);
+
   // Modals
   const [isGameOpen, setIsGameOpen] = useState(false);
   const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
 
-  // AIRI-style theming: light/dark + stage background, both persisted (device
-  // preferences only — personality data never lives on the user's machine).
-  const [theme, setTheme] = useState(() => localStorage.getItem('waguri_theme') || 'dark');
+  // Light theme is the active and default design
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem('waguri_theme', theme);
-  }, [theme]);
+    document.documentElement.dataset.theme = 'light';
+    localStorage.setItem('waguri_theme', 'light');
+  }, []);
 
   const [background, setBackground] = useState(() => {
     try { return JSON.parse(localStorage.getItem('waguri_background')) || { id: 'wave', custom: '' }; }
@@ -72,23 +70,33 @@ export default function App() {
   // enjoy just her on the stage.
   const [chatOpen, setChatOpen] = useState(true);
 
-  // Hands-free voice chat (Web Speech API); she ducks her audio when you speak.
+  // Hands-free voice chat (Web Speech API).
   // Bilingual: en-IN recognizes Hinglish (Roman script) + Indian English; hi-IN
   // for spoken Hindi. The LLM mirrors whichever language the transcript uses.
   const [handsFree, setHandsFree] = useState(false);
   const [voiceLang, setVoiceLang] = useState(() => localStorage.getItem('waguri_voice_lang') || 'en-IN');
   useEffect(() => { localStorage.setItem('waguri_voice_lang', voiceLang); }, [voiceLang]);
   const sendRef = useRef(null); // bound to handleSendMessage once it exists below
-  const handleBargeIn = useCallback(() => {
+
+  const handleStopAudio = useCallback(() => {
     try { audioRef.current?.pause(); } catch { /* nothing playing */ }
+    setIsSpeaking(false);
+    setActiveAudioUrl(null);
   }, []);
+
   const voice = useVoiceInput({
     enabled: handsFree,
+    paused: isSpeaking || isLoading || !!activeAudioUrl,
     onFinalTranscript: (text) => sendRef.current?.(text),
-    onSpeechStart: handleBargeIn,
     lang: voiceLang,
   });
-  const toggleMic = () => setHandsFree((h) => !h);
+
+  const toggleMic = () => {
+    if (isSpeaking) {
+      handleStopAudio();
+    }
+    setHandsFree((h) => !h);
+  };
 
   const audioRef = useRef(null);
   // Text of the message currently being voiced — if its stored audio_url turns out
@@ -148,50 +156,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Full automation: when the user has been quiet, Waguri sends an unprompted
-  // in-character line (text + emotion + voice) without any direct input.
-  useEffect(() => {
-    const timer = setInterval(async () => {
-      if (idleBusyRef.current || isLoading || isSpeaking) return;
-      if (document.visibilityState !== 'visible') return;
-      if (!isBackendHealthy) return;
-      const idleMs = Date.now() - lastActivityRef.current;
-      if (idleMs < IDLE_FIRST_MS) return;
-
-      idleBusyRef.current = true;
-      try {
-        const res = await callWithStaleRecovery(fetchIdleComment, {
-          conversationId,
-          personaId: persona?.id,
-          idleSeconds: Math.round(idleMs / 1000),
-        });
-        if (res.conversation_id && res.conversation_id !== conversationId) {
-          setConversationId(res.conversation_id);
-        }
-        const emotion = res.emotion || 'neutral';
-        setCurrentEmotion(emotion);
-        const botMsg = {
-          role: 'assistant',
-          content: res.reply_text,
-          emotion,
-          audio_url: res.audio_url,
-          latency_ms: res.meta?.llm?.latency_ms,
-          isIdleComment: true,
-        };
-        setMessages((prev) => [...prev, botMsg]);
-        if (autoPlayAudio) {
-          handlePlayAudio(botMsg.audio_url, emotion, botMsg.content);
-        }
-      } catch (err) {
-        console.warn('[idle] autonomous comment failed:', err.message);
-      } finally {
-        // Any outcome re-arms the loop for the next repeat interval.
-        lastActivityRef.current = Date.now();
-        idleBusyRef.current = false;
-      }
-    }, 10_000);
-    return () => clearInterval(timer);
-  }, [conversationId, persona?.id, isLoading, isSpeaking, isBackendHealthy, autoPlayAudio, messages.length]);
+  // Unprompted idle speech is disabled per user preference ("vrna n bole" — speaks only in response to user)
 
   // Audio Playback Handler. Stored audio URLs can die (the backend audio cache is
   // in-memory), so playback self-heals: on failure the voice is re-synthesized
@@ -210,9 +175,9 @@ export default function App() {
 
     if (audioUrl) {
       setActiveAudioUrl(audioUrl);
+      setIsSpeaking(true);
       try {
         await playUrl(audioUrl);
-        setIsSpeaking(true);
         return;
       } catch (err) {
         console.warn('Audio play failed, re-synthesizing voice:', err.message);
@@ -221,12 +186,12 @@ export default function App() {
 
     if (fallbackText) {
       try {
+        setIsSpeaking(true);
         const { audio_url } = await synthesizeToUrl(fallbackText);
         // Cache the fresh URL on the in-memory message so replays skip synthesis.
         setMessages((prev) => prev.map((m) => (m.content === fallbackText && m.role === 'assistant' ? { ...m, audio_url } : m)));
         setActiveAudioUrl(audio_url);
         await playUrl(audio_url);
-        setIsSpeaking(true);
         return;
       } catch (err) {
         console.warn('Voice re-synthesis failed:', err.message);
@@ -261,7 +226,7 @@ export default function App() {
         setConversationId(res.conversation_id);
       }
 
-      const emotion = res.emotion || 'neutral';
+      const emotion = res.emotion || res.mood?.expression || res.mood?.name || 'happy';
       setCurrentEmotion(emotion);
 
       const botMsg = {
@@ -275,8 +240,10 @@ export default function App() {
 
       setMessages((prev) => [...prev, botMsg]);
 
-      // Auto-play TTS audio if enabled
-      if (autoPlayAudio) {
+      // Auto-play TTS audio if enabled: Waguri speaks her entire reply automatically ("apna bole")
+      if (autoPlayAudio && botMsg.audio_url) {
+        setActiveAudioUrl(botMsg.audio_url);
+        setIsSpeaking(true);
         handlePlayAudio(botMsg.audio_url, emotion, botMsg.content);
       }
     } catch (err) {
@@ -303,7 +270,7 @@ export default function App() {
   };
 
   return (
-    <div className="stage" data-theme={theme}>
+    <div className="stage" data-theme="light">
       {/* stage background (wave / transparent / custom) */}
       <div className="bg-layer">
         {background.id === 'wave' && <WaveBackground />}
@@ -315,9 +282,13 @@ export default function App() {
       <audio
         ref={audioRef}
         crossOrigin="anonymous"
+        onPlay={() => setIsSpeaking(true)}
+        onPlaying={() => setIsSpeaking(true)}
         onEnded={handleAudioEnded}
-        onPause={() => setIsSpeaking(false)}
-        onError={() => setIsSpeaking(false)}
+        onError={() => {
+          setIsSpeaking(false);
+          setActiveAudioUrl(null);
+        }}
       />
 
       {/* Top bar */}
@@ -382,15 +353,20 @@ export default function App() {
           onSendMessage={handleSendMessage}
           isLoading={isLoading}
           onPlayAudio={handlePlayAudio}
+          onStopAudio={handleStopAudio}
           activeAudioUrl={activeAudioUrl}
           isPlayingAudio={isSpeaking}
           persona={persona}
           micSupported={voice.supported}
           isListening={voice.isListening}
+          isSpeaking={voice.isSpeaking}
+          volumeLevel={voice.volumeLevel}
+          isProcessing={voice.isProcessing}
           interim={voice.interim}
           voiceError={voice.voiceError}
           handsFree={handsFree}
           onToggleMic={toggleMic}
+          onResetVoiceError={voice.resetError}
         />
       </aside>
 
@@ -405,9 +381,17 @@ export default function App() {
           <MessageCircle size={19} />
         </button>
         <button
-          className={`fab ${handsFree ? 'mic-active' : ''}`}
+          className={`fab ${handsFree ? 'mic-active' : ''} ${voice.isSpeaking ? 'speaking' : ''}`}
           onClick={toggleMic}
-          title={voice.supported ? (handsFree ? 'Hands-free voice ON — speak anytime' : 'Enable hands-free voice') : 'Voice input needs Chrome/Edge (or use text)'}
+          title={
+            voice.voiceError
+              ? `${voice.voiceError} (click to retry)`
+              : handsFree
+              ? voice.isSpeaking
+                ? 'Hearing your voice…'
+                : 'Hands-free voice ON — speak anytime (click to mute)'
+              : 'Enable hands-free voice'
+          }
           aria-label="Toggle hands-free voice"
         >
           {handsFree ? <Mic size={19} /> : <MicOff size={19} />}
@@ -427,14 +411,6 @@ export default function App() {
           aria-label="Toggle voice auto-play"
         >
           {autoPlayAudio ? <Volume2 size={19} /> : <VolumeX size={19} />}
-        </button>
-        <button
-          className="fab"
-          onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-          title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-          aria-label="Toggle theme"
-        >
-          {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
         </button>
         <button
           className="fab"

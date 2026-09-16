@@ -2,15 +2,19 @@
 // messages injected as context; persona bible plugs in as data per section 2).
 import { config } from './config.js';
 
-export const EMOTIONS = ['happy', 'angry', 'sad', 'surprised', 'relaxed', 'neutral'];
+export const EMOTIONS = ['happy', 'excited', 'playful', 'curious', 'surprised', 'relaxed', 'sad', 'angry', 'neutral'];
 
-// ASSUMPTION (PRD does not fix a mechanism for emotions): the model prefixes each
-// reply with an emotion tag which the orchestrator strips; missing tag -> neutral.
-// Two spellings accepted: [happy] and [mood: happy].
+// Extracts emotion tag prefixed by LLM. If missing, returns null so conversational
+// contextual sentiment analysis can detect the true mood from user & reply context.
 export function extractEmotion(text) {
-  const m = String(text).match(/^\s*\[(?:mood:\s*)?(happy|angry|sad|surprised|relaxed|neutral|excited|curious)\]\s*/i);
-  if (m) return { emotion: m[1].toLowerCase(), reply: text.slice(m[0].length) };
-  return { emotion: 'neutral', reply: String(text).trim() };
+  if (!text) return { emotion: null, reply: '' };
+  const raw = String(text).trim();
+  // Strip any leading "PersonaName:" prefix if model outputs its own name
+  const stripped = raw.replace(/^[\w\s]{1,20}:\s*/i, '');
+  const m = stripped.match(/^\s*[\[(]\s*(?:mood:\s*|emotion:\s*)?\s*(happy|angry|sad|surprised|relaxed|neutral|excited|curious|playful)\s*[\])]\s*[:\-]?\s*/i)
+    || stripped.match(/^\s*\*\s*(?:mood:\s*|emotion:\s*)?\s*(happy|angry|sad|surprised|relaxed|neutral|excited|curious|playful)\s*\*\s*[:\-]?\s*/i);
+  if (m) return { emotion: m[1].toLowerCase(), reply: stripped.slice(m[0].length).trim() };
+  return { emotion: null, reply: stripped };
 }
 
 export function buildSystemPrompt(persona, memoryChunks) {
@@ -68,7 +72,7 @@ export function buildSystemPrompt(persona, memoryChunks) {
     `- Stay fully in character as ${persona.name}. Speak naturally, warmly, like texting a close friend.`,
     `- Use the memories above when they are relevant; never invent memories that contradict them.`,
     `- Keep replies short: 1-4 sentences, like chat messages.`,
-    `- VERY IMPORTANT: start every reply with an emotion tag from exactly this list: [happy] [angry] [sad] [surprised] [relaxed] [neutral]. Pick the one matching your feeling in this reply. Example: [happy] Arre wah, cake ekdum amazing tha!`,
+    `- VERY IMPORTANT: start every reply with an emotion tag matching the mood of this conversation: [happy], [excited], [playful], [curious], [surprised], [sad], [relaxed], or [angry]. Choose the feeling that matches what the conversation is about (e.g. [playful] for gaming/teasing/banter, [excited] for celebrations/great ideas, [curious] for questions/recommendations, [happy] for friendly chat, [relaxed] for cozy talk, [sad] for empathy). Example: [playful] Arre tum toh pakka haar jaoge Mario Kart mein!`,
   ].join('\n');
 }
 

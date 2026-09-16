@@ -11,7 +11,7 @@
 //   GET  /api/audio/:id                     — serves the audio_url bytes
 import express from 'express';
 import cors from 'cors';
-import { config } from './config.js';
+import { config, collectKeys } from './config.js';
 import { createStorage } from './db/index.js';
 import { KeyPool, PoolExhaustedError } from './keys/keyPool.js';
 import { createLLMCaller } from './llm/caller.js';
@@ -28,6 +28,7 @@ import { getAudio } from './audioCache.js';
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a proxy; request host must survive
 app.use(express.json({ limit: '1mb' }));
+app.use(express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '25mb' }));
 // cors() matches array entries LITERALLY, so ['*'] would send no
 // Access-Control-Allow-Origin at all — breaking <audio crossOrigin="anonymous">
 // playback (the lip-sync source!) from any dev/prod origin. '*' must reflect
@@ -296,26 +297,48 @@ app.get('/api/game/state/:sessionId', async (req, res, next) => {
 // -> Groq's OpenAI-compatible Whisper endpoint. Key stays server-side.
 app.post('/api/stt', async (req, res, next) => {
   try {
-    const groqKey = process.env.GROQ_API_KEYS?.split(',')[0]?.trim();
+    const groqKey =
+      (collectKeys ? collectKeys('groq')[0] : null) ||
+      process.env.GROQ_API_KEY ||
+      process.env.GROQ_API_KEYS?.split(',')[0]?.trim() ||
+      process.env.GROQ_API_KEY_1?.trim();
     if (!groqKey) {
-      return res.status(503).json({ error: 'STT fallback unavailable: set GROQ_API_KEYS (Web Speech API is the primary path)' });
+      return res.status(503).json({ error: 'STT fallback unavailable: configure a GROQ API key' });
     }
+
+    let audioBuffer;
+    if (Buffer.isBuffer(req.body)) {
+      audioBuffer = req.body;
+    } else {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      audioBuffer = Buffer.concat(chunks);
+    }
+
+    if (!audioBuffer || audioBuffer.length === 0) {
+      return res.status(400).json({ error: 'No audio data received' });
+    }
+
     const filename = req.headers['x-file-name'] || 'audio.webm';
-    const ctype = req.headers['x-audio-type'] || 'audio/webm';
-    // pipe raw body into the multipart form
+    const ctype = req.headers['x-audio-type'] || req.headers['content-type'] || 'audio/webm';
     const form = new FormData();
-    form.append('file', new Blob([Buffer.from(await req.arrayBuffer())], { type: ctype }), filename);
+    form.append('file', new Blob([audioBuffer], { type: ctype }), filename);
     form.append('model', process.env.STT_MODEL || 'whisper-large-v3');
+    if (req.headers['x-audio-lang']) {
+      form.append('language', req.headers['x-audio-lang']);
+    }
+
     const upstream = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${groqKey}` },
       body: form,
     });
     if (!upstream.ok) {
-      return res.status(upstream.status).json({ error: `STT upstream ${upstream.status}: ${(await upstream.text()).slice(0, 200)}` });
+      const errText = await upstream.text().catch(() => '');
+      return res.status(upstream.status).json({ error: `STT upstream ${upstream.status}: ${errText.slice(0, 200)}` });
     }
     const data = await upstream.json();
-    res.json({ text: data.text || '' });
+    res.json({ text: (data.text || '').trim() });
   } catch (e) { next(e); }
 });
 
