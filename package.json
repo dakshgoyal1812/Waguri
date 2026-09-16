@@ -1,0 +1,10 @@
+{
+  "name": "waguri",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Waguri persona-twin root package",
+  "scripts": {
+    "build": "npm --prefix backend install",
+    "start": "npm --prefix backend start"
+  }
+}
