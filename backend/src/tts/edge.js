@@ -10,32 +10,46 @@ function safeClose(tts) {
 }
 
 export async function edgeSynthesize(text, voice, timeoutMs, prosody = {}) {
-  const tts = new MsEdgeTTS();
-  // The underlying websocket may reject without a useful message; always contain it.
   const withTimeout = (p) => Promise.race([
     p,
     new Promise((_, rej) => setTimeout(() => rej(new Error('edge-tts timeout')), timeoutMs)),
   ]);
 
-  try {
-    await withTimeout(tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3));
-    // Mood voice tone: only hand ProsodyOptions over when non-empty.
-    const hasProsody = prosody && (prosody.rate || prosody.pitch || prosody.volume);
-    const { audioStream } = hasProsody
-      ? tts.toStream(text, prosody)
-      : tts.toStream(text);
-    const chunks = [];
+  const tryOnce = async (targetVoice) => {
+    const tts = new MsEdgeTTS();
     try {
-      for await (const c of audioStream) chunks.push(c);
-    } finally {
-      audioStream.on?.('error', () => {}); // drain late socket errors
+      await withTimeout(tts.setMetadata(targetVoice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3));
+      const hasProsody = prosody && (prosody.rate || prosody.pitch || prosody.volume);
+      const { audioStream } = hasProsody
+        ? tts.toStream(text, prosody)
+        : tts.toStream(text);
+      const chunks = [];
+      try {
+        for await (const c of audioStream) chunks.push(c);
+      } finally {
+        audioStream.on?.('error', () => {}); // drain late socket errors
+      }
+      const audio = Buffer.concat(chunks);
+      if (!audio.length) throw new Error('edge-tts produced empty audio');
+      safeClose(tts);
+      return { audio, mime: 'audio/mpeg' };
+    } catch (e) {
+      safeClose(tts);
+      throw e;
     }
-    const audio = Buffer.concat(chunks);
-    if (!audio.length) throw new Error('edge-tts produced empty audio');
-    safeClose(tts);
-    return { audio, mime: 'audio/mpeg' };
+  };
+
+  try {
+    return await tryOnce(voice);
   } catch (e) {
-    safeClose(tts);
+    if (voice && voice.includes('ExpressiveNeural')) {
+      const fallbackVoice = voice.replace('ExpressiveNeural', 'Neural');
+      try {
+        return await tryOnce(fallbackVoice);
+      } catch {
+        // preserve original error below
+      }
+    }
     const msg = e && e.message ? e.message : String(e);
     throw new Error(`edge-tts failed: ${msg}`);
   }

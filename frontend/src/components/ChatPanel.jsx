@@ -35,15 +35,20 @@ export default function ChatPanel({
   onSendMessage,
   isLoading,
   onPlayAudio,
+  onStopAudio = () => {},
   activeAudioUrl,
   isPlayingAudio,
   persona,
   micSupported = false,
   isListening = false,
+  isSpeaking = false,
+  volumeLevel = 0,
+  isProcessing = false,
   interim = '',
   voiceError = null,
   handsFree = false,
   onToggleMic = () => {},
+  onResetVoiceError = () => {},
 }) {
   const [inputText, setInputText] = useState('');
   const [thinkingIdx, setThinkingIdx] = useState(0);
@@ -169,8 +174,14 @@ export default function ChatPanel({
                 <div className="audio-controls-row">
                   <button
                     className="audio-play-btn"
-                    onClick={() => onPlayAudio(msg.audio_url, msg.emotion, msg.content)}
-                    title="Play voice audio"
+                    onClick={() => {
+                      if (isPlayingThis) {
+                        onStopAudio?.();
+                      } else {
+                        onPlayAudio(msg.audio_url, msg.emotion, msg.content);
+                      }
+                    }}
+                    title={isPlayingThis ? 'Click to stop speaking' : 'Play voice audio'}
                   >
                     <Volume2 size={13} style={{ animation: isPlayingThis ? 'pulse 1s infinite' : 'none' }} />
                     <span>{isPlayingThis ? 'Speaking...' : 'Play Voice'}</span>
@@ -210,10 +221,18 @@ export default function ChatPanel({
           {micSupported && (
             <button
               type="button"
-              className={`mic-btn ${handsFree ? 'active' : ''}`}
+              className={`mic-btn ${handsFree ? 'active' : ''} ${isSpeaking ? 'speaking' : ''}`}
               onClick={onToggleMic}
-              title={handsFree ? 'Hands-free voice ON — speak anytime' : 'Enable hands-free voice'}
-              aria-label="Toggle hands-free voice"
+              title={
+                voiceError
+                  ? `${voiceError} (click to retry)`
+                  : handsFree
+                  ? isSpeaking
+                    ? 'Hearing your voice…'
+                    : 'Hands-free voice ON — speak anytime (click to turn off)'
+                  : 'Enable microphone to talk to her'
+              }
+              aria-label="Toggle voice input"
             >
               {handsFree ? <Mic size={16} /> : <MicOff size={16} />}
             </button>
@@ -221,7 +240,7 @@ export default function ChatPanel({
           <input
             type="text"
             className="chat-input"
-            placeholder="Say something..."
+            placeholder={isListening ? 'Listening… or type a message' : 'Say something…'}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -237,14 +256,43 @@ export default function ChatPanel({
           </button>
         </form>
 
-        {(isListening || interim) && (
+        {(isPlayingAudio || isListening || interim || isProcessing) && (
           <div className="voice-caption" role="status">
-            <span className="voice-caption-label">🎤 {isListening ? 'listening…' : ''}</span>
-            {interim && <span className="voice-caption-text">{interim}</span>}
+            <div className="voice-caption-indicator">
+              <span className={`voice-dot ${isPlayingAudio ? 'speaking' : isSpeaking ? 'active' : ''}`} />
+              <span className="voice-caption-label">
+                {isPlayingAudio
+                  ? `${persona?.name || 'Waguri'} is speaking…`
+                  : isProcessing
+                  ? 'Transcribing…'
+                  : isSpeaking
+                  ? 'Hearing your voice…'
+                  : 'Mic active — speak anytime'}
+              </span>
+            </div>
+            {isListening && !isPlayingAudio && (
+              <div className="mic-volume-bars" title={`Volume: ${volumeLevel}%`}>
+                <span style={{ height: `${Math.max(4, Math.min(14, (volumeLevel / 100) * 14))}px` }} />
+                <span style={{ height: `${Math.max(4, Math.min(18, (volumeLevel / 100) * 18))}px` }} />
+                <span style={{ height: `${Math.max(4, Math.min(14, (volumeLevel / 100) * 14))}px` }} />
+              </div>
+            )}
+            {interim && <span className="voice-caption-text">"{interim}"</span>}
           </div>
         )}
         {voiceError && (
-          <div className="voice-caption" role="alert" style={{ color: '#f87171' }}>{voiceError}</div>
+          <div className="voice-caption voice-error" role="alert">
+            <span>⚠️ {voiceError}</span>
+            <button
+              type="button"
+              className="voice-error-dismiss"
+              onClick={onResetVoiceError}
+              title="Dismiss error"
+              aria-label="Dismiss error"
+            >
+              ×
+            </button>
+          </div>
         )}
       </div>
     </div>

@@ -101,14 +101,16 @@ export async function gameMove({ sessionId, move, choice, answer }) {
 }
 
 // STT fallback for browsers without the Web Speech API (recorded blob upload).
-export async function speechToText(blob) {
+export async function speechToText(blob, lang) {
+  const headers = {
+    'Content-Type': blob.type || 'audio/webm',
+    'x-file-name': 'speech.webm',
+    'x-audio-type': blob.type || 'audio/webm',
+  };
+  if (lang) headers['x-audio-lang'] = lang.startsWith('hi') ? 'hi' : 'en';
   const res = await fetch(`${BASE_URL}/api/stt`, {
     method: 'POST',
-    headers: {
-      'Content-Type': blob.type || 'audio/webm',
-      'x-file-name': 'speech.webm',
-      'x-audio-type': blob.type || 'audio/webm',
-    },
+    headers,
     body: blob,
   });
   return handleResponse(res);

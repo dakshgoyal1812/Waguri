@@ -59,15 +59,16 @@ export const config = {
     chunkOverlap: int(process.env.RAG_CHUNK_OVERLAP, 50),
   },
 
-  // TTS provider chain, first that succeeds wins (PRD section 9.4: Edge TTS primary,
-  // azure_tts keyed pool behind it; section 6 also lists fishaudio/google).
+  // TTS provider chain, first that succeeds wins (PRD section 9.4: Edge TTS / Fish Audio / Google).
   tts: {
-    providers: list(process.env.TTS_PROVIDERS) || ['edge', 'azure', 'google'],
-    voice: process.env.TTS_VOICE || 'en-IN-NeerjaNeural',
+    providers: list(process.env.TTS_PROVIDERS) || ['edge', 'fishaudio', 'google'],
+    // Real Indian female voice: en-IN-NeerjaExpressiveNeural (with en-IN-NeerjaNeural fallback)
+    voice: process.env.TTS_VOICE || 'en-IN-NeerjaExpressiveNeural',
     // Bilingual output: replies containing Devanagari auto-switch to a Hindi voice.
     voiceHindi: process.env.TTS_VOICE_HINDI || 'hi-IN-SwaraNeural',
     fishBaseUrl: process.env.FISH_AUDIO_BASE_URL || 'https://api.fish.audio',
-    fishReferenceId: process.env.FISH_AUDIO_REFERENCE_ID || '',
+    // "Anime girl" / "Girl with a anime like cute women" Fish Audio model ID
+    fishReferenceId: process.env.FISH_AUDIO_REFERENCE_ID || '69eb6788dfae49cbad7ab498f459fb80',
   },
 
   // Cooldown window for a per-minute rate limit (PRD section 9.3: 60s).
@@ -157,6 +158,7 @@ export const seedKeys = {
   nvidia: collectKeys('nvidia'),
   google: collectKeys('google', ['GEMINI_API_KEYS', 'GEMINI_API_KEY']),
   minimax: collectKeys('minimax'),
+  fishaudio: collectKeys('fishaudio', ['FISH_AUDIO_API_KEY', 'FISH_AUDIO_API_KEYS']),
 };
 
 // Sync back to process.env.*_API_KEYS and process.env.*_API_KEY for legacy/downstream consumers
