@@ -1,0 +1,59 @@
+# Waguri persona-twin backend on Render free tier (PRD section 11).
+# Deploy: Render dashboard -> New -> Blueprint -> point at this repo, root dir /.
+# All secret values come from the Render dashboard env sync, never from git.
+services:
+  - type: web
+    name: waguri-backend
+    runtime: node
+    plan: free                    # free tier spins down after ~15 min idle (section 13)
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health  # cron-job.org keepalive pings this every ~10 min
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: STORAGE_ADAPTER
+        value: supabase
+      # --- secrets: set these in the Render dashboard (sync: false = never stored in the blueprint) ---
+      - key: DATABASE_URL                       # Supabase pooler connection string
+        sync: false
+      - key: APP_ENCRYPTION_KEY                 # 64 hex chars, encrypts api_keys.key_value
+        sync: false
+      - key: ADMIN_TOKEN                        # guards /api/reset-quotas + /api/keypool/status
+        sync: false
+      - key: CORS_ORIGINS                       # e.g. https://waguri-frontend.vercel.app
+        sync: false
+      - key: PUBLIC_BASE_URL                    # e.g. https://waguri-backend.onrender.com
+        sync: false
+      # --- LLM key pool (PRD section 9.2: 3 OpenRouter keys + 1-2 second-tier keys) ---
+      - key: LLM_PROVIDER_TIERS
+        value: openrouter,groq
+      - key: LLM_MODELS_OPENROUTER
+        value: meta-llama/llama-3.3-70b-instruct:free,google/gemini-2.0-flash-exp:free,deepseek/deepseek-chat-v3-0324:free
+      - key: LLM_MODELS_GROQ
+        value: llama-3.3-70b-versatile
+      - key: OPENROUTER_API_KEYS                # comma-separated, seeded/encrypted on first boot
+        sync: false
+      - key: GROQ_API_KEYS
+        sync: false
+      # --- Embeddings (PRD section 6) ---
+      - key: EMBEDDINGS_PROVIDER
+        value: openai-compat
+      - key: EMBEDDINGS_BASE_URL
+        value: https://api.jina.ai/v1
+      - key: EMBEDDINGS_MODEL
+        value: jina-embeddings-v3
+      - key: EMBEDDINGS_DIM
+        value: "1024"
+      - key: EMBEDDINGS_API_KEY
+        sync: false
+      # --- TTS pool (PRD sections 6 + 9.4: edge primary, azure fallback) ---
+      - key: TTS_PROVIDERS
+        value: edge,azure,google
+      - key: TTS_VOICE
+        value: en-IN-NeerjaNeural
+      - key: TTS_VOICE_HINDI
+        value: hi-IN-SwaraNeural
+      - key: AZURE_TTS_KEYS                     # region:key pairs, comma-separated
+        sync: false
