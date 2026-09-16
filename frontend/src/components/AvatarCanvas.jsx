@@ -278,18 +278,16 @@ export default function AvatarCanvas({
           return;
         }
 
-        // VRM 1.0 optimization. Best-effort: meshopt-quantized buffers may be
-        // interleaved, which these helpers reject — skipping them only costs a
-        // little memory, while throwing here would kill the whole avatar.
+        // VRM 1.0 optimization (best-effort; interleaved buffers are safely skipped)
         try {
           VRMUtils.removeUnnecessaryVertices(gltf.scene);
-        } catch (e) {
-          console.warn('[AvatarCanvas] removeUnnecessaryVertices skipped:', e.message);
+        } catch {
+          // Interleaved buffers cannot be pruned by VRMUtils; benign and safe to skip
         }
         try {
           VRMUtils.removeUnnecessaryJoints(gltf.scene);
-        } catch (e) {
-          console.warn('[AvatarCanvas] removeUnnecessaryJoints skipped:', e.message);
+        } catch {
+          // Benign and safe to skip
         }
 
         // Position avatar
