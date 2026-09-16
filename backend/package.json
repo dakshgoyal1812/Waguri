@@ -1,0 +1,23 @@
+{
+  "name": "waguri-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Persona-twin engine: chat orchestrator, RAG retriever, Key Pool Manager, TTS pool (PRD sections 5-10)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed:persona": "node scripts/seed-persona.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "msedge-tts": "^2.0.7",
+    "pg": "^8.13.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
