@@ -38,7 +38,7 @@ export const config = {
 
   // LLM providers, in failover-tier order (PRD section 9.2: OpenRouter primary pool,
   // Groq/NVIDIA as second tier). Model list stays config, never hardcoded (PRD section 13).
-  llmTiers: list(process.env.LLM_PROVIDER_TIERS) || ['openrouter'],
+  llmTiers: list(process.env.LLM_PROVIDER_TIERS).length ? list(process.env.LLM_PROVIDER_TIERS) : ['google', 'openrouter', 'minimax', 'groq', 'nvidia'],
   llmProviders: {}, // provider -> { baseUrl, models, defaultModel } filled from env below
 
   // Embeddings (PRD section 6: OpenRouter or free embeddings API like Jina/Cohere;
