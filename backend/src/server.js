@@ -113,6 +113,16 @@ app.post('/api/idle-comment', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+app.get('/api/conversations/latest', async (req, res, next) => {
+  try {
+    const userId = req.query.user_id || 'local-user';
+    const conversation = await storage.getLatestConversation?.(userId);
+    if (!conversation) return res.json({ conversation: null });
+    const history = await storage.getHistory(conversation.id, { page: 1, limit: 50 });
+    res.json({ conversation, conversation_id: conversation.id, ...history });
+  } catch (e) { next(e); }
+});
+
 app.get('/api/conversations/:id/history', async (req, res, next) => {
   try {
     const conversation = await storage.getConversation(req.params.id);

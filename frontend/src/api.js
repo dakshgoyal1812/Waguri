@@ -61,6 +61,11 @@ export async function getConversationHistory(conversationId, { page = 1, limit =
   return handleResponse(res);
 }
 
+export async function getLatestConversation(userId = 'local-user') {
+  const res = await fetch(`${BASE_URL}/api/conversations/latest?user_id=${encodeURIComponent(userId)}`);
+  return handleResponse(res);
+}
+
 export async function getPersona(personaId) {
   const url = personaId
     ? `${BASE_URL}/api/persona?id=${encodeURIComponent(personaId)}`

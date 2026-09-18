@@ -73,6 +73,11 @@ export function createMemoryStorage() {
       return clone(row);
     },
     async getConversation(cid) { return db.conversations.get(cid) ? clone(db.conversations.get(cid)) : null; },
+    async getLatestConversation(userId = 'local-user') {
+      const all = [...db.conversations.values()].filter((c) => c.user_id === userId);
+      all.sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
+      return all[0] ? clone(all[0]) : null;
+    },
 
     // ---- messages ----
     async addMessage({ conversation_id, role, content }) {
