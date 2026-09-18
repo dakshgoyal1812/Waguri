@@ -4,6 +4,7 @@ import { config, seedKeys } from '../src/config.js';
 import { chatCompletion, LLMHttpError } from '../src/llm/openaiCompat.js';
 import { createEmbedder } from '../src/rag/embeddings.js';
 import { edgeSynthesize } from '../src/tts/edge.js';
+import { geminiSynthesize } from '../src/tts/gemini.js';
 
 console.log('====================================================');
 console.log('       WAGURI PROJECT API KEYS & SERVICES TEST       ');
@@ -120,6 +121,25 @@ async function testLLMKeys() {
 async function testTTS() {
   console.log('\n--- 4. Testing TTS Providers ---');
   console.log(`Configured TTS providers: ${config.tts.providers.join(', ')}`);
+
+  // Test Gemini TTS
+  const googleKeys = seedKeys.google || [];
+  if (googleKeys.length > 0) {
+    try {
+      const start = Date.now();
+      const rawKey = typeof googleKeys[0] === 'string' ? googleKeys[0] : googleKeys[0].key;
+      const res = await geminiSynthesize('Namaste! Main Waguri hoon.', rawKey, {
+        voice: config.tts.geminiVoice,
+        model: config.tts.geminiModel,
+        style: config.tts.geminiStyle,
+        timeoutMs: 15000,
+      });
+      console.log(`✅ Gemini TTS synthesized successfully in ${Date.now() - start}ms (voice: ${config.tts.geminiVoice}, audio: ${res.audio.length} bytes, MIME: ${res.mime})`);
+    } catch (err) {
+      console.log(`❌ Gemini TTS synthesis failed: ${err.message}`);
+    }
+  }
+
   try {
     const start = Date.now();
     const res = await edgeSynthesize('Hello! Waguri is ready.', config.tts.voice, 10000);

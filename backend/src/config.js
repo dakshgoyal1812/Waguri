@@ -59,9 +59,12 @@ export const config = {
     chunkOverlap: int(process.env.RAG_CHUNK_OVERLAP, 50),
   },
 
-  // TTS provider chain, first that succeeds wins (PRD section 9.4: Edge TTS / Fish Audio / Google).
+  // TTS provider chain, first that succeeds wins (Gemini TTS / Edge TTS / Fish Audio / Google).
   tts: {
-    providers: list(process.env.TTS_PROVIDERS) || ['edge', 'fishaudio', 'google'],
+    providers: list(process.env.TTS_PROVIDERS).length ? list(process.env.TTS_PROVIDERS) : ['gemini', 'edge', 'fishaudio', 'google'],
+    geminiModel: process.env.GEMINI_TTS_MODEL || 'gemini-2.5-flash-preview-tts',
+    geminiVoice: process.env.GEMINI_TTS_VOICE || 'Leda',
+    geminiStyle: process.env.GEMINI_TTS_STYLE || 'A soothing female voice with a gentle, empathetic tone. This voice is characterized by a fast, measured pace that creates an intimate and calming atmosphere.',
     // Real Indian female voice: en-IN-NeerjaExpressiveNeural (with en-IN-NeerjaNeural fallback)
     voice: process.env.TTS_VOICE || 'en-IN-NeerjaExpressiveNeural',
     // Bilingual output: replies containing Devanagari auto-switch to a Hindi voice.

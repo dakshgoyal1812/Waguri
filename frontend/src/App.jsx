@@ -5,7 +5,7 @@ import ChatPanel from './components/ChatPanel.jsx';
 import GamePanel from './components/GamePanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
 import WaveBackground from './components/WaveBackground.jsx';
-import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, synthesizeToUrl } from './api.js';
+import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 
 const EMOTIONS = ['happy', 'surprised', 'relaxed', 'neutral', 'sad', 'angry'];
@@ -133,16 +133,35 @@ export default function App() {
       });
   }, []);
 
-  // Conversation history is server-side too: on load, pull it from Supabase so
-  // the chat survives refreshes without storing anything personal locally.
+  // Persist conversationId in localStorage so page reloads do not orphan the conversation
   useEffect(() => {
-    if (!conversationId) return;
-    getConversationHistory(conversationId, { limit: 50 })
-      .then((h) => {
-        const items = (h.items || []).map((m) => ({ role: m.role, content: m.content }));
-        if (items.length) setMessages([WELCOME_MESSAGE, ...items]);
-      })
-      .catch((err) => console.warn('[waguri] history load skipped:', err.message));
+    if (conversationId) {
+      localStorage.setItem('waguri_conversation_id', conversationId);
+    }
+  }, [conversationId]);
+
+  // Conversation history is server-side too: on load, pull it from Supabase so
+  // the chat survives refreshes. If no conversationId is stored locally, fetch
+  // the user's latest conversation from Supabase.
+  useEffect(() => {
+    if (conversationId) {
+      getConversationHistory(conversationId, { limit: 50 })
+        .then((h) => {
+          const items = (h.items || []).map((m) => ({ role: m.role, content: m.content }));
+          if (items.length) setMessages([WELCOME_MESSAGE, ...items]);
+        })
+        .catch((err) => console.warn('[waguri] history load skipped:', err.message));
+    } else {
+      getLatestConversation('local-user')
+        .then((res) => {
+          if (res?.conversation_id) {
+            setConversationId(res.conversation_id);
+            const items = (res.items || []).map((m) => ({ role: m.role, content: m.content }));
+            if (items.length) setMessages([WELCOME_MESSAGE, ...items]);
+          }
+        })
+        .catch((err) => console.warn('[waguri] latest conversation load skipped:', err.message));
+    }
   }, [conversationId]);
 
   // Periodic health check

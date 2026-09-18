@@ -5,7 +5,8 @@
 // cooldown semantics as the LLM pool. Keyless providers (edge, google) have no
 // quota to rotate — PRD section 9.4: "treat a failure here the same as a 'key'
 // cooldown in the pool logic", so they get a virtual 60s in-memory cooldown.
-import { config } from '../config.js';
+import { config, collectKeys } from '../config.js';
+import { geminiSynthesize } from './gemini.js';
 import { edgeSynthesize } from './edge.js';
 import { azureSynthesize } from './azure.js';
 import { googleSynthesize } from './google.js';
@@ -37,6 +38,52 @@ export function createTTSPool(keyPool) {
 
     for (const provider of config.tts.providers) {
       try {
+        if (provider === 'gemini') {
+          // Key pool rotation for google/gemini keys
+          let key = await keyPool.getNextKey('google');
+          let directKeys = null;
+          if (!key) {
+            directKeys = collectKeys ? collectKeys('google', ['GEMINI_API_KEYS', 'GEMINI_API_KEY']) : [];
+          }
+          const candidateKeys = key ? [key.secret] : directKeys;
+          if (!candidateKeys || !candidateKeys.length) {
+            errors.push('gemini: no google/gemini keys configured');
+            continue;
+          }
+
+          let attemptKey = key;
+          const maxAttempts = attemptKey ? 3 : candidateKeys.length;
+          let succeeded = false;
+
+          for (let ki = 0; ki < maxAttempts; ki++) {
+            const activeSecret = attemptKey ? attemptKey.secret : candidateKeys[ki];
+            if (!activeSecret) break;
+            const started = Date.now();
+            try {
+              const r = await geminiSynthesize(clean, activeSecret, {
+                voice: config.tts.geminiVoice,
+                model: config.tts.geminiModel,
+                style: config.tts.geminiStyle,
+                timeoutMs: config.requestTimeoutMs || 20000,
+              });
+              if (attemptKey) {
+                await keyPool.markSuccess(attemptKey.id);
+                await keyPool.recordUsage(attemptKey.id, 200, Date.now() - started);
+              }
+              return { ...r, provider: 'gemini' };
+            } catch (e) {
+              if (attemptKey) {
+                await keyPool.recordUsage(attemptKey.id, e.status ?? 0, Date.now() - started);
+                errors.push(`gemini/${attemptKey.account_label}: ${e.message}`);
+                await keyPool.markCooldown(attemptKey.id, new Date(Date.now() + VIRTUAL_COOLDOWN_MS));
+                attemptKey = await keyPool.getNextKey('google');
+              } else {
+                errors.push(`gemini/direct: ${e.message}`);
+              }
+            }
+          }
+          continue;
+        }
         if (provider === 'fishaudio') {
           const envKey = process.env.FISH_AUDIO_API_KEY || process.env.FISH_AUDIO_API_KEYS?.split(',')[0]?.trim();
           if (envKey) {

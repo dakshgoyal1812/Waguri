@@ -101,6 +101,13 @@ export function createSupabaseStorage(databaseUrl) {
       const { rows } = await pool.query('select * from conversations where id = $1', [cid]);
       return rows[0] || null;
     },
+    async getLatestConversation(userId = 'local-user') {
+      const { rows } = await pool.query(
+        'select * from conversations where user_id = $1 order by started_at desc limit 1',
+        [userId]
+      );
+      return rows[0] || null;
+    },
 
     // ---- messages ----
     async addMessage({ conversation_id, role, content }) {
@@ -140,11 +147,13 @@ export function createSupabaseStorage(databaseUrl) {
     },
     async searchMemory({ conversation_id, embedding, k }) {
       // <=> is pgvector cosine distance; 1 - distance = cosine similarity
+      // In single-user companion mode, retrieve relevant memories across all past
+      // exchanges so Waguri permanently remembers across conversations/sessions.
       const { rows } = await pool.query(
-        `select content_chunk, created_at, 1 - (embedding <=> $2::vector) as similarity
-         from memory_vectors where conversation_id = $1
-         order by embedding <=> $2::vector limit $3`,
-        [conversation_id, `[${embedding.join(',')}]`, k]
+        `select content_chunk, created_at, 1 - (embedding <=> $1::vector) as similarity
+         from memory_vectors
+         order by embedding <=> $1::vector limit $2`,
+        [`[${embedding.join(',')}]`, k]
       );
       return rows;
     },
