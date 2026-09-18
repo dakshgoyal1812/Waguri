@@ -160,7 +160,11 @@ export function createSupabaseStorage(databaseUrl) {
 
     // ---- api_keys ----
     async listKeys(provider) {
-      const { rows } = await pool.query('select * from api_keys where provider = $1', [provider]);
+      if (provider) {
+        const { rows } = await pool.query('select * from api_keys where provider = $1', [provider]);
+        return rows;
+      }
+      const { rows } = await pool.query('select * from api_keys');
       return rows;
     },
     async upsertKey({ provider, key_value, account_label = '', daily_quota = 50 }) {

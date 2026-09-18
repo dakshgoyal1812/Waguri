@@ -756,3 +756,28 @@ body {
   .fab-row { right: 12px; bottom: 14px; }
   .avatar-overlay-controls { left: 12px; bottom: 14px; }
 }
+
+/* PWA Install Button */
+.install-pwa-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #ec4899, #d946ef);
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(217, 70, 239, 0.35);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.install-pwa-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(217, 70, 239, 0.45);
+}
+.install-pwa-btn:active {
+  transform: translateY(0);
+}

@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "Waguri — AI Companion",
+  "short_name": "Waguri",
+  "description": "Your 3D AI companion and VTuber twin with emotional intelligence, persistent memory, and soothing voice.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f8faff",
+  "theme_color": "#d946ef",
+  "categories": ["entertainment", "utilities", "social"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
