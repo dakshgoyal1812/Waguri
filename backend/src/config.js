@@ -88,7 +88,10 @@ export const config = {
 
 function providerFromEnv(name) {
   const upper = name.toUpperCase().replace(/-/g, '_');
-  const models = list(process.env[`LLM_MODELS_${upper}`]);
+  let models = list(process.env[`LLM_MODELS_${upper}`]);
+  if (!models.length && name === 'openrouter') {
+    models = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'openrouter/free'];
+  }
   const baseUrl = process.env[`LLM_BASE_URL_${upper}`] || defaultBaseUrl(name);
   return {
     baseUrl,

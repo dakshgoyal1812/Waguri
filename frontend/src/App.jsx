@@ -52,6 +52,24 @@ export default function App() {
   const [isGameOpen, setIsGameOpen] = useState(false);
   const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
 
+  // PWA install prompt handler
+  const [installPrompt, setInstallPrompt] = useState(null);
+  useEffect(() => {
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') setInstallPrompt(null);
+  };
+
   // Light theme is the active and default design
   useEffect(() => {
     document.documentElement.dataset.theme = 'light';
@@ -317,6 +335,15 @@ export default function App() {
           <span>WAGURI</span>
         </div>
         <div className="topbar-actions">
+          {installPrompt && (
+            <button
+              className="install-pwa-btn"
+              onClick={handleInstallApp}
+              title="Install Waguri App on your device"
+            >
+              📱 Install App
+            </button>
+          )}
           <div className={`badge ${isBackendHealthy ? 'online' : ''}`}>
             <span className="dot" />
             <span>{isBackendHealthy ? 'Engine Online' : 'Connecting...'}</span>

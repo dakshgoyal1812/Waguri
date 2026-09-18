@@ -9,21 +9,22 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 const EMOTION_PRESETS = ['happy', 'angry', 'sad', 'surprised', 'relaxed', 'neutral'];
 const VISEME_PRESETS = ['aa', 'ih', 'ou', 'ee', 'oh'];
 
-// ---- emotion blends (ported from airi's useVRMEmote) ----
-// Each mood is a BLEND of expression presets with capped weights (0.7-0.8 caps
-// fix airi issue #590's "too raw" faces) plus a small viseme component so the
-// face reads as feeling, not a static mask. Unknown moods fall back to neutral.
+// ---- emotion blends ----
+// Visemes (aa/ih/ou/ee/oh) are strictly audio-driven and never injected into idle
+// emotion blends so Waguri's mouth stays naturally closed when she isn't speaking.
+// In waguri.vrm (VRoid standard), 'relaxed' (Fcl_ALL_Fun) gives a sweet anime smile
+// with lips closed, while 'happy' (Fcl_ALL_Joy) is an open laugh.
 const EMOTION_BLENDS = {
-  happy:     [{ name: 'happy', value: 0.7 }, { name: 'aa', value: 0.2 }],
-  excited:   [{ name: 'happy', value: 0.85 }, { name: 'oh', value: 0.3 }],
-  sad:       [{ name: 'sad', value: 0.7 }, { name: 'oh', value: 0.15 }],
-  angry:     [{ name: 'angry', value: 0.7 }, { name: 'ee', value: 0.3 }],
-  surprised: [{ name: 'surprised', value: 0.8 }, { name: 'oh', value: 0.4 }],
-  relaxed:   [{ name: 'relaxed', value: 0.7 }],
+  happy:     [{ name: 'relaxed', value: 0.65 }],
+  excited:   [{ name: 'relaxed', value: 0.75 }, { name: 'surprised', value: 0.2 }],
+  sad:       [{ name: 'sad', value: 0.7 }],
+  angry:     [{ name: 'angry', value: 0.7 }],
+  surprised: [{ name: 'surprised', value: 0.6 }],
+  relaxed:   [{ name: 'relaxed', value: 0.65 }],
   neutral:   [{ name: 'neutral', value: 1.0 }],
-  curious:   [{ name: 'surprised', value: 0.35 }, { name: 'aa', value: 0.12 }],
-  playful:   [{ name: 'happy', value: 0.75 }, { name: 'ih', value: 0.2 }],
-  think:     [{ name: 'relaxed', value: 0.5 }, { name: 'ih', value: 0.1 }],
+  curious:   [{ name: 'surprised', value: 0.25 }, { name: 'relaxed', value: 0.4 }],
+  playful:   [{ name: 'relaxed', value: 0.7 }],
+  think:     [{ name: 'relaxed', value: 0.4 }, { name: 'sad', value: 0.15 }],
 };
 
 // ---- eye saccades (ported verbatim from airi's eye-motions.ts) ----
@@ -446,8 +447,9 @@ export default function AvatarCanvas({
             }
             lipVowelRef.current = best;
 
-            // Only the winning viseme opens; openness follows loudness.
-            lipTargets[best] = Math.min(0.9, 0.25 + level * 1.7);
+            // Only the winning viseme opens; natural opening scaled to volume (capped at 0.58 so mouth never overstretches)
+            const speechFactor = Math.min(1, Math.max(0, (level - 0.08) / 0.7));
+            lipTargets[best] = Math.min(0.58, 0.15 + speechFactor * 0.40);
             frameEnergy = level;
           }
         }
@@ -587,23 +589,23 @@ export default function AvatarCanvas({
         }
 
         // ---- 5. Smooth the viseme weights toward the analyzed targets.
-        // Asymmetric smoothing — snap OPEN with voice bursts, close SMOOTHLY.
+        // Asymmetric smoothing — snap OPEN with voice bursts, close CLEANLY when silent.
+        const isSpeakingNow = speakingRef.current;
         const openRate = Math.min(1, delta * 22);
-        const closeRate = Math.min(1, delta * 9);
+        const closeRate = isSpeakingNow ? Math.min(1, delta * 12) : Math.min(1, delta * 22);
         for (const v of VISEME_PRESETS) {
           const target = lipTargets[v];
           const cur = expressionWeights.current[v];
-          expressionWeights.current[v] = cur + (target - cur) * (target > cur ? openRate : closeRate);
+          let next = cur + (target - cur) * (target > cur ? openRate : closeRate);
+          // Snap tiny residual values to 0 so the mouth rests completely closed
+          if (!isSpeakingNow && next < 0.005) next = 0;
+          expressionWeights.current[v] = next;
         }
 
-        // ---- 6. Update VRM Expressions — airi-style emotion BLENDS.
-        // Each mood drives several presets at once (happy = happy .7 + aa .2, etc.),
-        // transitions ease toward the blend targets, and lip-sync visemes always
-        // win over the blend's small viseme components (max, not overwrite).
+        // ---- 6. Update VRM Expressions
         if (vrm.expressionManager) {
           const blend = EMOTION_BLENDS[emotionRef.current] || EMOTION_BLENDS.neutral;
-          const blendVisemes = new Set(blend.filter((c) => VISEME_PRESETS.includes(c.name)).map((c) => c.name));
-          const emotionK = Math.min(1, delta * 7); // ~0.3-0.6s settle, airi blendDuration range
+          const emotionK = Math.min(1, delta * 7); // ~0.3-0.6s settle
 
           for (const emo of EMOTION_PRESETS) {
             const target = blend.find((c) => c.name === emo)?.value || 0;
@@ -611,12 +613,9 @@ export default function AvatarCanvas({
             vrm.expressionManager.setValue(emo, Math.max(0, Math.min(1, expressionWeights.current[emo])));
           }
 
-          // Visemes: lip-sync wins; emotion components fill the quiet mouth.
+          // Visemes: driven purely by audio lip-sync (strictly 0 in idle/silence).
           for (const v of VISEME_PRESETS) {
-            const fromEmotion = blendVisemes.has(v)
-              ? (blend.find((c) => c.name === v)?.value || 0) * (1 - expressionWeights.current[v])
-              : 0;
-            vrm.expressionManager.setValue(v, Math.max(expressionWeights.current[v], fromEmotion));
+            vrm.expressionManager.setValue(v, expressionWeights.current[v]);
           }
 
           // Blink
