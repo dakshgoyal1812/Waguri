@@ -1,13 +1,19 @@
 // Google TTS — keyless fallback (PRD section 6 lists "google tts model" in the TTS
 // pool). Uses the public translate_tts endpoint; text is chunked to <=200 chars
 // because that endpoint caps query length.
+// Bilingual: detects Devanagari script for Hindi voice, otherwise Indian English.
 const MAX_Q = 200;
+const DEVANAGARI = /[\u0900-\u097F]/;
 
 export async function googleSynthesize(text, voice, timeoutMs) {
+  // Extract language from voice string (e.g., 'hi-IN-SwaraNeural' -> 'hi', 'en-IN-...' -> 'en')
+  const langCode = voice && typeof voice === 'string' && voice.includes('-IN')
+    ? voice.split('-')[0]
+    : (DEVANAGARI.test(text) ? 'hi' : 'en');
   const parts = chunk(String(text));
   const buffers = [];
   for (const p of parts) {
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q=${encodeURIComponent(p)}`;
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${langCode}&q=${encodeURIComponent(p)}`;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {

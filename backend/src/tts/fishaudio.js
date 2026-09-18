@@ -2,6 +2,7 @@ import { cleanTextForTTS } from './cleaner.js';
 
 // Fish Audio TTS — "Anime girl" / "Girl with a anime like cute women" model
 // Model ID: 69eb6788dfae49cbad7ab498f459fb80
+// Bilingual: supports both Hinglish (Roman) and Hindi (Devanagari) text.
 export async function fishSynthesize(text, voice, keySecret, timeoutMs, { baseUrl, referenceId }) {
   const token = keySecret || process.env.FISH_AUDIO_API_KEY || process.env.FISH_AUDIO_API_KEYS?.split(',')[0]?.trim();
   const refId = referenceId || process.env.FISH_AUDIO_REFERENCE_ID || '69eb6788dfae49cbad7ab498f459fb80';

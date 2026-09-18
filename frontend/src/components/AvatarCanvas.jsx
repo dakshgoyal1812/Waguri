@@ -6,7 +6,7 @@ import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 // refuses the file unless a decoder is provided (no-op for non-meshopt models).
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
-const EMOTION_PRESETS = ['happy', 'angry', 'sad', 'surprised', 'relaxed', 'neutral'];
+const EMOTION_PRESETS = ['happy', 'angry', 'sad', 'surprised', 'relaxed', 'neutral', 'excited', 'playful', 'curious'];
 const VISEME_PRESETS = ['aa', 'ih', 'ou', 'ee', 'oh'];
 
 // ---- emotion blends (ported from airi's useVRMEmote) ----
