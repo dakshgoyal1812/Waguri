@@ -93,7 +93,6 @@ export default function ChatPanel({
           <div className="persona-avatar-sm">W</div>
           <div className="persona-meta">
             <h2>{persona?.name || 'Waguri'}</h2>
-            <p>{persona?.location || 'Delhi, India'} • {persona?.personality_traits?.[0] || '148cm cute student'}</p>
           </div>
         </div>
       </div>

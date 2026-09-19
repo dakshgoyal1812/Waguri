@@ -13,7 +13,8 @@ import { isAdminEmail } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 
-const EMOTIONS = ['happy', 'surprised', 'relaxed', 'neutral', 'sad', 'angry'];
+// Natural emotion cycle pool for automatic, subtle idle expression transitions
+const IDLE_EMOTION_POOL = ['relaxed', 'happy', 'neutral', 'curious', 'relaxed', 'happy'];
 
 // Feeling layer: first spontaneous line after 2 min of silence; each fired comment
 // re-arms the timer, so the cadence stays ~2 min for as long as the user is away.
@@ -44,16 +45,27 @@ export default function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [activeAudioUrl, setActiveAudioUrl] = useState(null);
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
-  const [isBackendHealthy, setIsBackendHealthy] = useState(true);
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Expressions stay lively while speaking, and gently fade back to neutral ~10s after.
+  // Automatic Emotion Engine:
+  // - Speech and dialogue emotions are driven automatically by LLM replies / speech playback.
+  // - While speaking or loading, the emotion locks to the reply's mood.
+  // - During idle periods, Waguri organically and subtly cycles between cute, natural
+  //   expressions (relaxed, happy, neutral, curious) every 14 seconds without any manual clicks.
   useEffect(() => {
-    if (currentEmotion === 'neutral' || isSpeaking) return;
-    const t = setTimeout(() => setCurrentEmotion('neutral'), 10000);
-    return () => clearTimeout(t);
-  }, [currentEmotion, isSpeaking]);
+    if (isSpeaking || isLoading) return;
+
+    const IDLE_CYCLE_MS = 14000;
+    const timer = setInterval(() => {
+      setCurrentEmotion((prev) => {
+        const pool = IDLE_EMOTION_POOL.filter((e) => e !== prev);
+        return pool[Math.floor(Math.random() * pool.length)] || 'relaxed';
+      });
+    }, IDLE_CYCLE_MS);
+
+    return () => clearInterval(timer);
+  }, [isSpeaking, isLoading]);
 
   // Modals
   const [isGameOpen, setIsGameOpen] = useState(false);
@@ -192,14 +204,12 @@ export default function App() {
     }
   }, [conversationId, authUser]);
 
-  // Periodic health check
+  // Periodic background health ping to keep backend warm
   useEffect(() => {
-    const check = async () => {
-      const h = await checkBackendHealth();
-      setIsBackendHealthy(!!h.ok);
-    };
-    check();
-    const timer = setInterval(check, 15000);
+    checkBackendHealth().catch(() => {});
+    const timer = setInterval(() => {
+      checkBackendHealth().catch(() => {});
+    }, 20000);
     return () => clearInterval(timer);
   }, []);
 
@@ -434,10 +444,6 @@ export default function App() {
               📱 Install App
             </button>
           )}
-          <div className={`badge ${isBackendHealthy ? 'online' : ''}`}>
-            <span className="dot" />
-            <span>{isBackendHealthy ? 'Engine Online' : 'Connecting...'}</span>
-          </div>
           <button
             type="button"
             className="theme-toggle-btn"
@@ -446,14 +452,6 @@ export default function App() {
             aria-label="Toggle theme"
           >
             {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-          </button>
-          <button
-            className="icon-btn lang-btn"
-            onClick={() => setVoiceLang((l) => (l === 'en-IN' ? 'hi-IN' : 'en-IN'))}
-            title={`Voice language: ${voiceLang === 'en-IN' ? 'English + Hinglish' : 'हिंदी'} (click to switch)`}
-            aria-label="Switch voice language"
-          >
-            {voiceLang === 'en-IN' ? 'EN' : 'हि'}
           </button>
         </div>
       </header>
@@ -477,19 +475,7 @@ export default function App() {
         </div>
       )}
 
-      {/* manual emotion test bar (fades in on hover) */}
-      <div className="avatar-overlay-controls">
-        <span>Mood</span>
-        {EMOTIONS.map((emo) => (
-          <button
-            key={emo}
-            className={`emotion-pill ${currentEmotion === emo ? 'active' : ''}`}
-            onClick={() => setCurrentEmotion(emo)}
-          >
-            {emo}
-          </button>
-        ))}
-      </div>
+
 
       {/* floating chat card */}
       <aside className={`chat-card ${chatOpen ? 'open' : ''}`}>
