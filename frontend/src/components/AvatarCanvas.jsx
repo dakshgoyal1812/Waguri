@@ -324,10 +324,10 @@ export default function AvatarCanvas({
             fov: 33,
           };
         }
-        // Phone with chat closed (full body portrait view showing legs and shoes):
+        // Phone with chat closed: balanced portrait view
         return {
-          pos: new THREE.Vector3(0, 0.78, 2.85),
-          look: new THREE.Vector3(0, 0.74, 0),
+          pos: new THREE.Vector3(0, 0.98, 2.30),
+          look: new THREE.Vector3(0, 0.94, 0),
           fov: 34,
         };
       }
@@ -336,35 +336,35 @@ export default function AvatarCanvas({
         if (isChatOpen) {
           // Tablet with chat card on the side:
           return {
-            pos: new THREE.Vector3(-0.24, 0.78, 2.75),
-            look: new THREE.Vector3(-0.14, 0.76, 0),
+            pos: new THREE.Vector3(-0.20, 0.98, 2.15),
+            look: new THREE.Vector3(-0.10, 0.94, 0),
             fov: 34,
           };
         }
         return {
-          pos: new THREE.Vector3(0, 0.78, 2.75),
-          look: new THREE.Vector3(0, 0.76, 0),
+          pos: new THREE.Vector3(0, 0.98, 2.15),
+          look: new THREE.Vector3(0, 0.94, 0),
           fov: 34,
         };
       }
 
-      // Desktop (1025px+): full body framing showing head, dress, legs, socks, and shoes!
+      // Desktop (1025px+): balanced companion framing with ample headroom and clear view down to knees
       if (isChatOpen) {
         // Shift left (-0.28) into open viewport area away from the 420px chat card
         return {
-          pos: new THREE.Vector3(-0.28, 0.78, 2.75),
-          look: new THREE.Vector3(-0.16, 0.76, 0),
+          pos: new THREE.Vector3(-0.28, 0.98, 2.12),
+          look: new THREE.Vector3(-0.16, 0.94, 0),
           fov: 34,
         };
       }
       return {
-        pos: new THREE.Vector3(0, 0.78, 2.75),
-        look: new THREE.Vector3(0, 0.76, 0),
+        pos: new THREE.Vector3(0, 0.96, 2.20),
+        look: new THREE.Vector3(0, 0.92, 0),
         fov: 34,
       };
     };
 
-    const currentLook = new THREE.Vector3(0, 0.76, 0);
+    const currentLook = new THREE.Vector3(0, 0.94, 0);
     const initialParams = getTargetCameraParams(width, height, chatOpenRef.current, tierRef.current);
 
     const camera = new THREE.PerspectiveCamera(initialParams.fov, width / height, 0.1, 20);
@@ -388,17 +388,21 @@ export default function AvatarCanvas({
     renderer.shadowMap.enabled = false; // Disable heavy shadow maps on mobile/web
     container.appendChild(renderer.domElement);
 
-    // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
+    // Lights: balanced anime lighting with rim/back light for 3D silhouette separation
+    const ambientLight = new THREE.AmbientLight(0xfff8f0, 0.95);
     scene.add(ambientLight);
 
-    const keyLight = new THREE.DirectionalLight(0xfff0f5, 1.6);
-    keyLight.position.set(1.0, 2.0, 1.5);
+    const keyLight = new THREE.DirectionalLight(0xfff0f5, 1.25);
+    keyLight.position.set(1.2, 2.2, 1.5);
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0xe0e7ff, 0.9);
-    fillLight.position.set(-1.0, 1.5, 1.0);
+    const fillLight = new THREE.DirectionalLight(0xe0e7ff, 0.55);
+    fillLight.position.set(-1.2, 1.2, 1.0);
     scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0xfdf4ff, 0.75);
+    rimLight.position.set(0, 1.8, -1.8);
+    scene.add(rimLight);
 
     // Eye-tracking look target: a point in front of her face the eyes follow
     const lookTarget = new THREE.Object3D();

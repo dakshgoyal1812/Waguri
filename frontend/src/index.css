@@ -102,22 +102,24 @@ body {
 
 
 
-/* ============ top bar (legacy preserved for fallback) ============ */
+/* ============ top bar ============ */
 .topbar {
   position: absolute;
-  top: 0;
+  top: 14px;
   left: 0;
   right: 0;
+  height: 52px;
   z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 22px 10px;
+  padding: 0 24px;
   background: transparent;
   pointer-events: none;
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
+  box-sizing: border-box;
 }
 .topbar > * { pointer-events: auto; }
 
@@ -853,7 +855,9 @@ body {
     height: 40px;
   }
   .topbar {
-    padding: 10px 14px 6px;
+    top: max(8px, env(safe-area-inset-top, 8px));
+    height: 44px;
+    padding: 0 14px;
   }
   .logo {
     font-size: 1.05rem;
