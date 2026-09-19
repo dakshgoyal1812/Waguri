@@ -42,7 +42,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
           const email = session.user.email;
           if (!isEmailAllowed(email)) {
             supabase.auth.signOut();
-            alert(`Access denied — ye account allowed nahi hai (${email || 'unknown'}).`);
+            alert('Access Denied');
             setUser(null);
             onUserChange?.(null);
           } else {
@@ -67,7 +67,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
 
         if (!email || !isEmailAllowed(email)) {
           await supabase.auth.signOut();
-          alert(`Access denied — ye account allowed nahi hai (${email || 'unknown'}).`);
+          alert('Access Denied');
           setUser(null);
           onUserChange?.(null);
           return;
