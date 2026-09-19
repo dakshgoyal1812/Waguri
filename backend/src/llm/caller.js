@@ -37,8 +37,9 @@ export function createLLMCaller(keyPool) {
               apiKey: 'local-dev', // placeholder — local/mock servers ignore it
               model,
               messages,
-              timeoutMs: config.requestTimeoutMs,
+              timeoutMs: options.timeoutMs || config.requestTimeoutMs,
               temperature: options.temperature,
+              maxTokens: options.maxTokens || options.max_tokens,
             });
             return { text: res.text, provider, model, keyId: null, latencyMs: Date.now() - started };
           } catch (e) {
@@ -63,8 +64,9 @@ export function createLLMCaller(keyPool) {
               apiKey: key.secret,
               model,
               messages,
-              timeoutMs: config.requestTimeoutMs,
+              timeoutMs: options.timeoutMs || config.requestTimeoutMs,
               temperature: options.temperature,
+              maxTokens: options.maxTokens || options.max_tokens,
             });
             await keyPool.markSuccess(key.id);
             await keyPool.recordUsage(key.id, res.status, res.latencyMs);

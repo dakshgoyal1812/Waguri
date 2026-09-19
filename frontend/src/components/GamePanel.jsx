@@ -8,9 +8,12 @@ const GAMES = [
   { id: 'twentyq', label: '20 Questions', emoji: '❓' },
 ];
 
-// She PLAYS with you: rules run server-side (she can never cheat the board), but
-// every move/result is narrated by her LLM brain and arrives as chat + voice
-// through the normal pipeline, so she talks while playing.
+const RPS_EMOJIS = {
+  rock: '✊',
+  paper: '✋',
+  scissors: '✌️',
+};
+
 export default function GamePanel({
   isOpen, onClose, conversationId, onPlayAudio, onGameMessage,
 }) {
@@ -19,6 +22,8 @@ export default function GamePanel({
   const [state, setState] = useState(null);
   const [lastLine, setLastLine] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
+  const [pendingChoice, setPendingChoice] = useState(null);
   const [error, setError] = useState(null);
 
   if (!isOpen) return null;
@@ -37,7 +42,10 @@ export default function GamePanel({
   };
 
   const begin = async (id) => {
-    setBusy(true); setError(null);
+    setBusy(true);
+    setIsThinking(true);
+    setError(null);
+    setPendingChoice(null);
     try {
       const resp = await startGame(id, conversationId);
       setSessionId(resp.session_id);
@@ -45,139 +53,316 @@ export default function GamePanel({
       setState(resp.state);
       deliver(resp);
     } catch (e) {
-      setError(e.message);
-    } finally { setBusy(false); }
+      setError(e.message || 'Failed to start game');
+    } finally {
+      setBusy(false);
+      setIsThinking(false);
+    }
   };
 
-  const act = async (payload) => {
-    if (!sessionId || busy) return;
-    setBusy(true); setError(null);
+  // Optimistic move for Tic-Tac-Toe: reflect player mark in 0ms!
+  const actMove = async (cellIndex) => {
+    if (!sessionId || busy || !state || state.board[cellIndex] || state.finished) return;
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(12); } catch { /* ignore */ }
+    }
+
+    // Optimistic board update
+    const previousBoard = [...state.board];
+    const nextBoard = [...state.board];
+    nextBoard[cellIndex] = 'X';
+    setState((prev) => ({ ...prev, board: nextBoard }));
+
+    setBusy(true);
+    setIsThinking(true);
+    setError(null);
+
     try {
-      const resp = await gameMove({ sessionId, ...payload });
+      const resp = await gameMove({ sessionId, move: cellIndex + 1 });
       setState(resp.state);
       deliver(resp);
     } catch (e) {
-      setError(e.message);
-    } finally { setBusy(false); }
+      // Revert board on network failure
+      setState((prev) => ({ ...prev, board: previousBoard }));
+      setError(e.message || 'Move failed');
+    } finally {
+      setBusy(false);
+      setIsThinking(false);
+    }
+  };
+
+  // Optimistic throw for Rock-Paper-Scissors
+  const actRps = async (choiceId) => {
+    if (!sessionId || busy) return;
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(12); } catch { /* ignore */ }
+    }
+
+    setPendingChoice(choiceId);
+    setBusy(true);
+    setIsThinking(true);
+    setError(null);
+
+    try {
+      const resp = await gameMove({ sessionId, choice: choiceId });
+      setState(resp.state);
+      deliver(resp);
+    } catch (e) {
+      setError(e.message || 'Round failed');
+    } finally {
+      setBusy(false);
+      setIsThinking(false);
+      setPendingChoice(null);
+    }
+  };
+
+  // 20 Questions answer
+  const actTwentyQ = async (answerId) => {
+    if (!sessionId || busy) return;
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(12); } catch { /* ignore */ }
+    }
+
+    setBusy(true);
+    setIsThinking(true);
+    setError(null);
+
+    try {
+      const resp = await gameMove({ sessionId, answer: answerId });
+      setState(resp.state);
+      deliver(resp);
+    } catch (e) {
+      setError(e.message || 'Answer failed');
+    } finally {
+      setBusy(false);
+      setIsThinking(false);
+    }
   };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+      <div
+        className="game-modal-content"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Gamepad2 size={20} color="var(--accent-pink)" />
-            <h3>Play with {`Waguri`}</h3>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>Play with Waguri</h3>
           </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Close modal"><X size={18} /></button>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+            <X size={18} />
+          </button>
         </div>
 
-        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-          She narrates every move out loud — rules are enforced by the server, sass comes from her brain.
-        </p>
-
-        {/* game picker */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {GAMES.map((g) => (
-            <button
-              key={g.id}
-              className="quick-pill"
-              disabled={busy}
-              style={game === g.id ? { borderColor: 'var(--accent-pink)', color: 'var(--accent-pink)' } : undefined}
-              onClick={() => begin(g.id)}
-            >
-              {g.emoji} {g.label}
-            </button>
-          ))}
-        </div>
-
-        {error && (
-          <div style={{ padding: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', color: '#f87171', fontSize: '0.82rem' }}>
-            {error}
-          </div>
-        )}
-
-        {lastLine && (
-          <div style={{ padding: '10px 12px', background: 'rgba(167, 139, 250, 0.1)', border: '1px solid rgba(167, 139, 250, 0.25)', borderRadius: '8px', fontSize: '0.86rem', color: 'var(--text-primary)' }}>
-            <span style={{ color: 'var(--accent-purple)', fontWeight: 700, marginRight: '6px' }}>Waguri:</span>
-            {lastLine.text}
-          </div>
-        )}
-
-        {/* tic-tac-toe board */}
-        {game === 'tictactoe' && state && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 64px)', gap: '6px' }}>
-              {state.board.map((cell, i) => (
-                <button
-                  key={i}
-                  className="form-input"
-                  style={{
-                    height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1.6rem', fontWeight: 700, cursor: cell || state.finished || busy ? 'default' : 'pointer',
-                    color: cell === 'X' ? 'var(--accent-pink)' : 'var(--accent-purple)',
-                    padding: 0, textAlign: 'center',
-                  }}
-                  disabled={!!cell || state.finished || busy}
-                  onClick={() => act({ move: i + 1 })}
-                >
-                  {cell}
-                </button>
-              ))}
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              You (X) {state.score.you} · Draws {state.score.draws} · Waguri (O) {state.score.her}
-            </div>
-            {state.finished && (
-              <button className="btn-primary" disabled={busy} onClick={() => begin('tictactoe')}>
-                <Dices size={15} /> Rematch
+        <div className="game-modal-body">
+          {/* Game picker */}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {GAMES.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                className="quick-pill"
+                disabled={busy}
+                style={{
+                  padding: '7px 14px',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  touchAction: 'manipulation',
+                  ...(game === g.id ? { borderColor: 'var(--accent-pink)', color: 'var(--accent-pink)', background: 'var(--surface-hover)' } : {}),
+                }}
+                onClick={() => begin(g.id)}
+              >
+                {g.emoji} {g.label}
               </button>
-            )}
+            ))}
           </div>
-        )}
 
-        {/* rps */}
-        {game === 'rps' && state && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              {[['rock', '✊'], ['paper', '✋'], ['scissors', '✌️']].map(([id, emoji]) => (
-                <button key={id} className="quick-pill" disabled={busy} style={{ fontSize: '1.4rem', padding: '10px 18px' }} onClick={() => act({ choice: id })}>
-                  {emoji}
-                </button>
-              ))}
+          {error && (
+            <div style={{
+              padding: '8px 12px',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '10px',
+              color: '#f87171',
+              fontSize: '0.8rem',
+              textAlign: 'center',
+            }}>
+              {error}
             </div>
-            {state.last && (
-              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                You: {state.last.user} · Her: {state.last.her} —{' '}
-                <b style={{ color: state.last.result === 'she_won' ? 'var(--accent-purple)' : state.last.result === 'you_won' ? 'var(--accent-pink)' : 'var(--text-muted)' }}>
-                  {state.last.result === 'she_won' ? 'she wins the round' : state.last.result === 'you_won' ? 'you win the round' : 'draw'}
-                </b>
+          )}
+
+          {/* Waguri speech / banter card */}
+          {lastLine && (
+            <div className="game-banter-card">
+              <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>🌸</span>
+              <div style={{ flex: 1 }}>
+                <strong style={{ color: 'var(--accent-purple)', marginRight: '6px' }}>Waguri:</strong>
+                <span>{lastLine.text}</span>
               </div>
-            )}
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              You {state.score.you} · Draws {state.score.draws} · Waguri {state.score.her} ({state.rounds} rounds)
             </div>
-          </div>
-        )}
+          )}
 
-        {/* twentyq */}
-        {game === 'twentyq' && state && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-              Question {Math.min(state.round + 1, state.max_rounds)} of {state.max_rounds} — answer out loud or with the buttons:
+          {isThinking && (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div className="game-thinking-badge">
+                <span>💭 Waguri is thinking...</span>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {[['yes', '👍 Yes'], ['maybe', '🤔 Kind of'], ['no', '👎 No']].map(([id, label]) => (
-                <button key={id} className="quick-pill" disabled={busy} onClick={() => act({ answer: id })}>{label}</button>
-              ))}
+          )}
+
+          {/* Tic-Tac-Toe Board */}
+          {game === 'tictactoe' && state && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+              <div className="ttt-grid">
+                {state.board.map((cell, i) => {
+                  const isX = cell === 'X';
+                  const isO = cell === 'O';
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      className={`ttt-cell ${isX ? 'cell-x' : isO ? 'cell-o' : ''}`}
+                      disabled={!!cell || state.finished || busy}
+                      onClick={() => actMove(i)}
+                      aria-label={`Cell ${i + 1} ${cell || 'empty'}`}
+                    >
+                      {cell}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Scoreboard */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.8rem', flexWrap: 'wrap' }}>
+                <span className="quick-pill" style={{ pointerEvents: 'none', padding: '4px 10px', fontSize: '0.78rem' }}>
+                  You (X): <b style={{ color: 'var(--accent-pink)', marginLeft: '4px' }}>{state.score.you}</b>
+                </span>
+                <span className="quick-pill" style={{ pointerEvents: 'none', padding: '4px 10px', fontSize: '0.78rem' }}>
+                  Draws: <b style={{ marginLeft: '4px' }}>{state.score.draws}</b>
+                </span>
+                <span className="quick-pill" style={{ pointerEvents: 'none', padding: '4px 10px', fontSize: '0.78rem' }}>
+                  Waguri (O): <b style={{ color: 'var(--accent-purple)', marginLeft: '4px' }}>{state.score.her}</b>
+                </span>
+              </div>
+
+              {state.finished && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={busy}
+                  style={{ touchAction: 'manipulation', padding: '9px 18px', marginTop: '4px' }}
+                  onClick={() => begin('tictactoe')}
+                >
+                  <Dices size={16} /> Play Again
+                </button>
+              )}
             </div>
-            {state.finished && (
-              <button className="btn-primary" disabled={busy} onClick={() => begin('twentyq')}>
-                <Dices size={15} /> New round
-              </button>
-            )}
-          </div>
-        )}
+          )}
+
+          {/* Rock-Paper-Scissors */}
+          {game === 'rps' && state && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+              <div className="rps-grid">
+                {[
+                  ['rock', '✊', 'Rock'],
+                  ['paper', '✋', 'Paper'],
+                  ['scissors', '✌️', 'Scissors'],
+                ].map(([id, emoji, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`rps-btn ${pendingChoice === id ? 'active' : ''}`}
+                    disabled={busy}
+                    onClick={() => actRps(id)}
+                  >
+                    <span className="rps-emoji">{emoji}</span>
+                    <span className="rps-label">{label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {state.last && (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '8px 14px',
+                  background: 'var(--surface-hover)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-glass)',
+                  width: '100%',
+                  maxWidth: '300px',
+                  margin: '2px auto',
+                }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                    You {RPS_EMOJIS[state.last.user]} vs {RPS_EMOJIS[state.last.her]} Waguri
+                  </div>
+                  <span style={{
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    color: state.last.result === 'she_won' ? 'var(--accent-purple)' : state.last.result === 'you_won' ? 'var(--accent-pink)' : 'var(--text-muted)',
+                  }}>
+                    {state.last.result === 'she_won' ? '✨ Waguri wins this round!' : state.last.result === 'you_won' ? '🎉 You win this round!' : '🤝 It\'s a tie!'}
+                  </span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.8rem', flexWrap: 'wrap' }}>
+                <span className="quick-pill" style={{ pointerEvents: 'none', padding: '4px 10px', fontSize: '0.78rem' }}>
+                  You: <b style={{ color: 'var(--accent-pink)', marginLeft: '4px' }}>{state.score.you}</b>
+                </span>
+                <span className="quick-pill" style={{ pointerEvents: 'none', padding: '4px 10px', fontSize: '0.78rem' }}>
+                  Draws: <b style={{ marginLeft: '4px' }}>{state.score.draws}</b>
+                </span>
+                <span className="quick-pill" style={{ pointerEvents: 'none', padding: '4px 10px', fontSize: '0.78rem' }}>
+                  Waguri: <b style={{ color: 'var(--accent-purple)', marginLeft: '4px' }}>{state.score.her}</b>
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* 20 Questions */}
+          {game === 'twentyq' && state && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+              <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                Question <b>{Math.min(state.round + 1, state.max_rounds)}</b> of {state.max_rounds}:
+              </div>
+              <div className="twentyq-grid">
+                {[
+                  ['yes', '👍', 'Yes'],
+                  ['maybe', '🤔', 'Kind of'],
+                  ['no', '👎', 'No'],
+                ].map(([id, emoji, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className="twentyq-btn"
+                    disabled={busy}
+                    onClick={() => actTwentyQ(id)}
+                  >
+                    <span>{emoji}</span> {label}
+                  </button>
+                ))}
+              </div>
+              {state.finished && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={busy}
+                  style={{ touchAction: 'manipulation', padding: '9px 18px', marginTop: '4px' }}
+                  onClick={() => begin('twentyq')}
+                >
+                  <Dices size={16} /> New Round
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
