@@ -3,6 +3,7 @@ import { X, ImagePlus } from 'lucide-react';
 
 // AIRI-style background picker: presets + custom upload, live preview, apply.
 const PRESETS = [
+  { id: 'paper', name: 'Textured Paper', desc: 'Light geometric woven paper pattern' },
   { id: 'wave', name: 'Colorful Wave', desc: 'Animated wave on cross grid' },
   { id: 'midnight', name: 'Midnight Sky', desc: 'Dark starry sky with moon & shooting meteors' },
   { id: 'transparent', name: 'Transparent', desc: 'Reveal the plain stage backdrop' },
@@ -32,6 +33,16 @@ export default function BackgroundPicker({ isOpen, onClose, background, onApply 
   };
 
   const thumbFor = (id) => {
+    if (id === 'paper') {
+      return (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'radial-gradient(circle, #777 1px, transparent 1px), linear-gradient(45deg, #eee 0%, #ddd 100%)',
+          backgroundSize: '16px 16px',
+        }} />
+      );
+    }
     if (id === 'wave') return <div className="cross-grid" style={{ position: 'absolute', inset: 0 }} />;
     if (id === 'midnight') {
       return (
@@ -86,6 +97,14 @@ export default function BackgroundPicker({ isOpen, onClose, background, onApply 
 
         <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', margin: '6px 0' }}>Preview</div>
         <div style={{ height: 120, borderRadius: 12, overflow: 'hidden', position: 'relative', border: '1px solid var(--border-glass)' }}>
+          {draftId === 'paper' && (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'radial-gradient(circle, #777 1.5px, transparent 1.5px), linear-gradient(45deg, #f5f5f5 0%, #e5e5e5 50%, #f5f5f5 100%)',
+              backgroundSize: '24px 24px',
+            }} />
+          )}
           {draftId === 'wave' && <div className="cross-grid" style={{ position: 'absolute', inset: 0 }} />}
           {draftId === 'midnight' && (
             <div style={{ position: 'absolute', inset: 0, background: '#050505', overflow: 'hidden' }}>

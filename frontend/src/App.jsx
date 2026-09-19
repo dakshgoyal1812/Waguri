@@ -6,6 +6,7 @@ import GamePanel from './components/GamePanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
 import WaveBackground from './components/WaveBackground.jsx';
 import MidnightSkyBackground from './components/MidnightSkyBackground.jsx';
+import PaperBackground from './components/PaperBackground.jsx';
 import GoogleAuth from './components/GoogleAuth.jsx';
 import AdminPortal from './components/AdminPortal.jsx';
 import { isAdminEmail } from './supabaseClient.js';
@@ -320,7 +321,7 @@ export default function App() {
     return (
       <div className="auth-gate-container" data-theme={theme}>
         <div className="bg-layer">
-          {theme === 'dark' ? <MidnightSkyBackground /> : <WaveBackground />}
+          {theme === 'dark' ? <MidnightSkyBackground /> : <PaperBackground />}
         </div>
         <div className="ambient-glow" />
         <div className="auth-gate-card">
@@ -345,6 +346,7 @@ export default function App() {
             <MidnightSkyBackground />
           ) : (
             <>
+              <PaperBackground />
               {background.id === 'wave' && <WaveBackground />}
               {background.id === 'midnight' && <MidnightSkyBackground />}
               {background.id === 'custom' && background.custom && (
@@ -376,12 +378,13 @@ export default function App() {
 
   return (
     <div className="stage" data-theme={theme}>
-      {/* stage background (wave / midnight / transparent / custom) */}
+      {/* stage background (paper / wave / midnight / transparent / custom) */}
       <div className="bg-layer">
         {theme === 'dark' || background.id === 'midnight' ? (
           <MidnightSkyBackground />
         ) : (
           <>
+            <PaperBackground />
             {background.id === 'wave' && <WaveBackground />}
             {background.id === 'custom' && background.custom && <div className="bg-custom" style={{ backgroundImage: `url(${background.custom})` }} />}
           </>

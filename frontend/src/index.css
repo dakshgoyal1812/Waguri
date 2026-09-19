@@ -2169,6 +2169,68 @@ body {
   transform: translateY(-1px);
 }
 
+/* ============================================================
+   Light Mode: Geometric Woven Paper Texture Pattern
+   ============================================================ */
+
+.light-paper-pattern {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.light-paper-pattern .container {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, #777777 2px, transparent 2px),
+    radial-gradient(circle, #eaeaea 10px, transparent 32px),
+    linear-gradient(
+      -45deg,
+      #eaeaea 0%,
+      transparent 49%,
+      transparent 50%,
+      transparent 51%,
+      #eaeaea 100%
+    ),
+    linear-gradient(
+      45deg,
+      #eaeaea 0%,
+      transparent 49%,
+      #777777 50%,
+      transparent 51%,
+      #eaeaea 100%
+    ),
+    linear-gradient(-45deg, transparent 49%, #777777 50%, transparent 51%);
+  background-size: 8rem 8rem;
+  background-repeat: repeat;
+}
+
+.light-paper-pattern .paper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  filter: url(#void-texture);
+  background: linear-gradient(
+    to bottom,
+    rgba(194, 167, 87, 0.241) 0%,
+    rgba(162, 125, 55, 0.255) 100%
+  );
+  background-size: cover;
+}
+
+.light-paper-pattern .texture-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+
 
 
 
