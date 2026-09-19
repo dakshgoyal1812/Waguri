@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  // Expose NEXT_PUBLIC_API_URL at build time too (PRD section 11 uses that name)
-  envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
+  envDir: '../',
+  // Expose NEXT_PUBLIC_API_URL and SUPABASE_ at build time too
+  envPrefix: ['VITE_', 'NEXT_PUBLIC_', 'SUPABASE_'],
   server: {
     port: 5173,
     proxy: {

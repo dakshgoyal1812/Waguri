@@ -5,6 +5,7 @@ import ChatPanel from './components/ChatPanel.jsx';
 import GamePanel from './components/GamePanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
 import WaveBackground from './components/WaveBackground.jsx';
+import GoogleAuth from './components/GoogleAuth.jsx';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 
@@ -40,6 +41,7 @@ export default function App() {
   const [activeAudioUrl, setActiveAudioUrl] = useState(null);
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
   const [isBackendHealthy, setIsBackendHealthy] = useState(true);
+  const [authUser, setAuthUser] = useState(null);
 
   // Expressions stay lively while speaking, and gently fade back to neutral ~10s after.
   useEffect(() => {
@@ -170,7 +172,8 @@ export default function App() {
         })
         .catch((err) => console.warn('[waguri] history load skipped:', err.message));
     } else {
-      getLatestConversation('local-user')
+      const uid = authUser?.email || 'local-user';
+      getLatestConversation(uid)
         .then((res) => {
           if (res?.conversation_id) {
             setConversationId(res.conversation_id);
@@ -180,7 +183,7 @@ export default function App() {
         })
         .catch((err) => console.warn('[waguri] latest conversation load skipped:', err.message));
     }
-  }, [conversationId]);
+  }, [conversationId, authUser]);
 
   // Periodic health check
   useEffect(() => {
@@ -255,7 +258,7 @@ export default function App() {
       const res = await callWithStaleRecovery(sendMessage, {
         conversationId,
         personaId: persona?.id,
-        userId: 'local-user',
+        userId: authUser?.email || 'local-user',
         message: userText,
       });
 
@@ -335,6 +338,7 @@ export default function App() {
           <span>WAGURI</span>
         </div>
         <div className="topbar-actions">
+          <GoogleAuth onUserChange={setAuthUser} compact />
           {installPrompt && (
             <button
               className="install-pwa-btn"

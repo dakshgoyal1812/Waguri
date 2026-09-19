@@ -203,6 +203,9 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
 
   // Fallback recorder runner
   const startFallbackRecording = useCallback(async () => {
+    // Never record while the avatar is speaking/loading (paused): the mic would
+    // capture her TTS voice and later transcribe it into an echo self-send.
+    if (!wantListeningRef.current || pausedRef.current) return;
     const stream = streamRef.current || (await startAudioCapture());
     if (!stream) return;
 
@@ -223,25 +226,31 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       mr.onstop = async () => {
         const chunks = recorderChunksRef.current;
         recorderChunksRef.current = [];
-        if (!chunks.length) return;
-        const blob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' });
-        if (blob.size < 1800) return; // too small, pure silence
-
-        setIsProcessing(true);
         try {
-          const res = await speechToText(blob, langRef.current);
-          if (res?.text) {
-            dispatchTranscript(res.text);
+          if (chunks.length) {
+            const blob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' });
+            if (blob.size >= 1800) { // smaller is pure silence / room noise
+              setIsProcessing(true);
+              try {
+                const res = await speechToText(blob, langRef.current);
+                if (res?.text) {
+                  dispatchTranscript(res.text);
+                }
+              } catch (e) {
+                console.warn('[voice fallback] STT error:', e);
+                setVoiceError(`Voice transcription error: ${e.message}`);
+              } finally {
+                setIsProcessing(false);
+              }
+            }
           }
-        } catch (e) {
-          console.warn('[voice fallback] STT error:', e);
-          setVoiceError(`Voice transcription error: ${e.message}`);
         } finally {
-          setIsProcessing(false);
-          // Restart recording for next phrase if still listening
-          if (wantListeningRef.current && useFallbackRef.current) {
+          // Always re-arm for the next phrase — including after a too-silent clip,
+          // which previously killed the recorder chain for the rest of the session —
+          // but never while paused (avatar speaking) or the mic would capture her.
+          if (wantListeningRef.current && useFallbackRef.current && !pausedRef.current) {
             setTimeout(() => {
-              if (wantListeningRef.current && useFallbackRef.current) {
+              if (wantListeningRef.current && useFallbackRef.current && !pausedRef.current) {
                 startFallbackRecording();
               }
             }, 300);

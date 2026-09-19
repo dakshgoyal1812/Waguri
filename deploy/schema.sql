@@ -38,14 +38,13 @@ create table if not exists personas (
   created_at timestamptz not null default now()
 );
 
--- Spec-named views (the app's personas/messages tables ARE characters/chat_history;
--- these views keep tooling that expects the spec names working).
+-- ===== spec-named views (the app's personas/messages tables ARE characters/chat_history;
+-- these views keep tooling that expects the spec names working) =====
+-- NOTE: defined AFTER the messages table below — a view needs its source table
+-- to exist first, and a fresh database previously failed right here.
 create view if not exists characters as
   select id, name, prompt_template as system_prompt, base_temperature, active_mood_id, location, speech_style, backstory, personality_traits, created_at
   from personas;
-create view if not exists chat_history as
-  select conversation_id as session_id, role, content, created_at
-  from messages;
 
 -- ===== conversations =====
 create table if not exists conversations (
@@ -66,6 +65,11 @@ create table if not exists messages (
 );
 create index if not exists messages_conversation_created_idx
   on messages (conversation_id, created_at);
+
+-- Spec-named view over the messages table (safe here: messages now exists).
+create view if not exists chat_history as
+  select conversation_id as session_id, role, content, created_at
+  from messages;
 
 -- ===== memory_vectors (pgvector, RAG) =====
 create table if not exists memory_vectors (

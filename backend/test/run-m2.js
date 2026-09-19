@@ -17,7 +17,9 @@ import { cooldownExpiryFrom429 } from '../src/keys/keyPool.js';
   check('unit: chunker splits long text into multiple overlapping chunks', chunks.length >= 2 && chunks.every((c) => c.length <= 520), `chunks=${chunks.length} lens=${chunks.map((c) => c.length)}`);
   const { emotion, reply } = extractEmotion('[surprised] No way, really?!');
   check('unit: emotion extraction strips tag', emotion === 'surprised' && reply === 'No way, really?!', JSON.stringify({ emotion, reply }));
-  check('unit: missing emotion tag -> neutral', extractEmotion('plain text').emotion === 'neutral');
+  // extractEmotion returns NULL (not 'neutral') when no tag is present, so the
+  // mood engine can resolve the mood contextually (sentiment / reply keywords).
+  check('unit: missing emotion tag -> null (contextual mood detection)', extractEmotion('plain text').emotion === null);
   const perMin = cooldownExpiryFrom429('Rate limit exceeded: free-models-per-minute. Try again in 20s.');
   const perDay = cooldownExpiryFrom429('Rate limit exceeded: free-models-per-day. Add 10 credits.');
   const minOk = perMin - Date.now() > 30_000 && perMin - Date.now() < 70_000;

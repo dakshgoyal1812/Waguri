@@ -104,10 +104,8 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
     return choice;
   }
 
-  async function ttAfterMove(session, herMoveNum) {
-    let winner = ttWinner(session.board);
-    let line = '';
-    if (!winner && herMoveNum) line = `you played ${herMoveNum}, `;
+  async function ttAfterMove(session, userMoveNum, herMoveNum) {
+    const winner = ttWinner(session.board);
     let outcome = null;
     if (winner === 'O') { outcome = 'she_won'; session.score.her++; }
     else if (winner === 'X') { outcome = 'you_won'; session.score.you++; }
@@ -117,8 +115,14 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
       : outcome === 'you_won' ? 'The human WON this round of tic-tac-toe.'
       : outcome === 'draw' ? 'The game is a draw.'
       : 'The game continues.';
+    // userMoveNum is the HUMAN's square; herMoveNum is the reply square (null when
+    // the human's move already ended the game). Keep the two straight in the prompt
+    // or she narrates the mirror-image of what happened on the board.
+    const moveLine = herMoveNum
+      ? `The human just played square ${userMoveNum}, and you replied with square ${herMoveNum}. `
+      : `The human just played square ${userMoveNum}. `;
     const ban = await banter(
-      `We are playing tic-tac-toe. ${line ? `The human just played square ${herMoveNum}. ` : ''}${outcomeText} Score — you: ${session.score.her}, human: ${session.score.you}, draws: ${session.score.draws}. React to the move/result in character.` +
+      `We are playing tic-tac-toe. ${moveLine}${outcomeText} Score — you: ${session.score.her}, human: ${session.score.you}, draws: ${session.score.draws}. React to the move/result in character. The app UI renders the board — NEVER draw the board or use markdown/code blocks; plain spoken text only.` +
       (outcome ? ' Offer a rematch!' : ''),
       outcome === 'she_won' ? 'Yay, main jeet gayi!' : outcome === 'you_won' ? 'Ahh, is baar tum jeet gaye!' : 'Waah, badhiya move!'
     );
@@ -163,15 +167,21 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
 
   // ---------------- twenty questions ----------------
   // She guesses; the human answers yes/no/kindof. Server tracks round count.
+  // The question being answered is paired with its answer BEFORE the LLM is
+  // asked for the next one — pairing the NEW question with the old answer (the
+  // old code) made her guess blind: every answer reached her without its question.
   async function twentyqTurn(session, userAnswer) {
     session.round++;
+    if (session.currentQuestion) {
+      session.qa.push({ question: session.currentQuestion, answer: userAnswer });
+    }
     const qa = session.qa.map((q, i) => `Q${i + 1}: ${q.question} -> ${q.answer}`).join('\n') || '(no questions yet)';
     const finishedIn = session.round >= session.maxRounds;
     const ban = await banter(
       `You are playing 20 questions: the human thinks of something, you guess it with yes/no questions. Answers so far:\n${qa}\nThe human just answered: "${userAnswer}".\n${finishedIn ? 'That was your LAST question — you must now make your FINAL GUESS of what the thing is (say "My guess is: ...").' : `Ask your next yes/no question (question ${session.round + 1} of ${session.maxRounds}).`}`,
       finishedIn ? 'Mera final guess hai... a cat!' : 'Hmm, kya woh zinda hai?'
     );
-    session.qa.push({ question: ban.text, answer: userAnswer });
+    session.currentQuestion = ban.text; // the next question the human will answer
     session.finished = finishedIn;
     return { banterText: ban.text, emotion: ban.emotion };
   }
@@ -186,7 +196,7 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
       } else if (game === 'rps') {
         session = { kind: 'rps', score: { you: 0, her: 0, draws: 0 }, history: [], finished: false };
       } else if (game === 'twentyq') {
-        session = { kind: 'twentyq', round: 0, maxRounds: 20, qa: [], finished: false };
+        session = { kind: 'twentyq', round: 0, maxRounds: 20, qa: [], currentQuestion: null, finished: false };
       } else {
         const e = new Error(`unknown game: ${game} (tictactoe | rps | twentyq)`); e.status = 400; throw e;
       }
@@ -199,11 +209,12 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
       };
       // Opener through her voice; LLM banter if available, canned line otherwise.
       const ban = await banter(
-        game === 'tictactoe' ? 'Invite the human to play tic-tac-toe. They are X and move first, squares are numbered 1-9.'
+        game === 'tictactoe' ? 'Invite the human to play tic-tac-toe. They are X and move first, squares are numbered 1-9. The app UI renders the board — NEVER draw the board or use markdown/code blocks; plain spoken text only.'
         : game === 'rps' ? 'Invite the human to play rock-paper-scissors.'
         : 'Start 20 questions: tell them to think of something secret, then ask your first yes/no question.',
         openers[game]
       );
+      if (game === 'twentyq') session.currentQuestion = ban.text;
       return {
         session_id: sessionId,
         game,
@@ -229,7 +240,7 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
         if (!winner) {
           herMoveNum = await ttHerMove(session);
         }
-        outcomeResp = await ttAfterMove(session, herMoveNum);
+        outcomeResp = await ttAfterMove(session, n, herMoveNum);
         return {
           session_id: sessionId,
           game: 'tictactoe',
