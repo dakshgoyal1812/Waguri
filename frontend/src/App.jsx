@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sun, Moon, Share2 } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import GamePanel from './components/GamePanel.jsx';
@@ -72,6 +72,29 @@ export default function App() {
   const [isGameOpen, setIsGameOpen] = useState(false);
   const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
+
+  // Radial action menu (social-fab): open state + close on outside tap so the
+  // fan never lingers over the stage after the user taps elsewhere (mobile).
+  const [fabOpen, setFabOpen] = useState(false);
+  const fabMenuRef = useRef(null);
+  useEffect(() => {
+    if (!fabOpen) return;
+    const onOutside = (e) => {
+      if (fabMenuRef.current && !fabMenuRef.current.contains(e.target)) setFabOpen(false);
+    };
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('touchstart', onOutside, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('touchstart', onOutside);
+    };
+  }, [fabOpen]);
+
+  // Run a menu action, then fold the fan away — standard speed-dial behavior.
+  const handleFabAction = (fn) => {
+    fn();
+    setFabOpen(false);
+  };
 
   // PWA install prompt handler
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -502,55 +525,69 @@ export default function App() {
         />
       </aside>
 
-      {/* round action buttons (bottom-right, airi-style) */}
-      <div className="fab-row">
+      {/* radial action menu (bottom-right, social-clock style):
+          collapsed to one trigger; expands into a colored button fan on
+          hover (desktop) or trigger tap (touch), spinning out like a clock */}
+      <div className={`social-fab ${fabOpen ? 'open' : ''}`} ref={fabMenuRef}>
+        <div className="social-fab__list">
+          <button
+            className={`social-fab__button chat ${chatOpen ? 'active' : ''}`}
+            onClick={() => handleFabAction(() => setChatOpen((o) => !o))}
+            title={chatOpen ? 'Hide chat' : 'Show chat'}
+            aria-label="Toggle chat panel"
+          >
+            <MessageCircle size={19} />
+          </button>
+          <button
+            className={`social-fab__button mic ${handsFree ? 'mic-active' : ''} ${voice.isSpeaking ? 'speaking' : ''}`}
+            onClick={() => handleFabAction(toggleMic)}
+            title={
+              voice.voiceError
+                ? `${voice.voiceError} (click to retry)`
+                : handsFree
+                ? voice.isSpeaking
+                  ? 'Hearing your voice…'
+                  : 'Hands-free voice ON — speak anytime (click to mute)'
+                : 'Enable hands-free voice'
+            }
+            aria-label="Toggle hands-free voice"
+          >
+            {handsFree ? <Mic size={19} /> : <MicOff size={19} />}
+          </button>
+          <button
+            className="social-fab__button game"
+            onClick={() => handleFabAction(() => setIsGameOpen(true))}
+            title="Play a game with her"
+            aria-label="Play games"
+          >
+            <Gamepad2 size={19} />
+          </button>
+          <button
+            className={`social-fab__button voice ${autoPlayAudio ? 'active' : ''}`}
+            onClick={() => handleFabAction(() => setAutoPlayAudio(!autoPlayAudio))}
+            title={autoPlayAudio ? 'Her voice ON' : 'Her voice MUTED'}
+            aria-label="Toggle voice auto-play"
+          >
+            {autoPlayAudio ? <Volume2 size={19} /> : <VolumeX size={19} />}
+          </button>
+          <button
+            className="social-fab__button bg"
+            onClick={() => handleFabAction(() => setIsBgPickerOpen(true))}
+            title="Stage background"
+            aria-label="Stage background"
+          >
+            <ImageIcon size={19} />
+          </button>
+        </div>
         <button
-          className={`fab ${chatOpen ? 'active' : ''}`}
-          onClick={() => setChatOpen((o) => !o)}
-          title={chatOpen ? 'Hide chat' : 'Show chat'}
-          aria-label="Toggle chat panel"
+          type="button"
+          className={`social-fab__trigger ${handsFree ? 'mic-live' : ''}`}
+          onClick={() => setFabOpen((o) => !o)}
+          aria-label="Toggle actions menu"
+          aria-expanded={fabOpen}
+          title="Actions"
         >
-          <MessageCircle size={19} />
-        </button>
-        <button
-          className={`fab ${handsFree ? 'mic-active' : ''} ${voice.isSpeaking ? 'speaking' : ''}`}
-          onClick={toggleMic}
-          title={
-            voice.voiceError
-              ? `${voice.voiceError} (click to retry)`
-              : handsFree
-              ? voice.isSpeaking
-                ? 'Hearing your voice…'
-                : 'Hands-free voice ON — speak anytime (click to mute)'
-              : 'Enable hands-free voice'
-          }
-          aria-label="Toggle hands-free voice"
-        >
-          {handsFree ? <Mic size={19} /> : <MicOff size={19} />}
-        </button>
-        <button
-          className="fab"
-          onClick={() => setIsGameOpen(true)}
-          title="Play a game with her"
-          aria-label="Play games"
-        >
-          <Gamepad2 size={19} />
-        </button>
-        <button
-          className={`fab ${autoPlayAudio ? 'active' : ''}`}
-          onClick={() => setAutoPlayAudio(!autoPlayAudio)}
-          title={autoPlayAudio ? 'Her voice ON' : 'Her voice MUTED'}
-          aria-label="Toggle voice auto-play"
-        >
-          {autoPlayAudio ? <Volume2 size={19} /> : <VolumeX size={19} />}
-        </button>
-        <button
-          className="fab"
-          onClick={() => setIsBgPickerOpen(true)}
-          title="Stage background"
-          aria-label="Stage background"
-        >
-          <ImageIcon size={19} />
+          <Share2 size={17} />
         </button>
       </div>
 

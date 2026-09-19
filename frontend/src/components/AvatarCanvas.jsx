@@ -372,11 +372,14 @@ export default function AvatarCanvas({
     currentLook.copy(initialParams.look);
     camera.lookAt(currentLook);
 
-    const initialTier = tierRef.current;
-    const maxPr = initialTier === 'mobile' ? 1.25 : (initialTier === 'tablet' ? 1.5 : 2.0);
+    // Sharpness: render at up to 2x device pixels on every tier. Phones report
+    // DPR 2.6-3.5, so the old 1.25 mobile cap stretched the canvas over 2x and
+    // made her look blurry. 2x stays crisp on every phone while still capping
+    // fill rate well below a full 3x render (keeps GPU/battery cost light).
+    const maxPr = 2;
 
     const renderer = new THREE.WebGLRenderer({
-      antialias: initialTier !== 'mobile', // conserve mobile GPU
+      antialias: true, // hardware MSAA is cheap at this resolution; hair edges stay smooth
       alpha: true,
       powerPreference: 'high-performance',
     });
@@ -550,8 +553,7 @@ export default function AvatarCanvas({
       camera.fov = targetParams.fov;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
-      const pr = tierRef.current === 'mobile' ? 1.25 : (tierRef.current === 'tablet' ? 1.5 : 2.0);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pr));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPr));
     };
 
     let resizeObserver = null;
@@ -574,16 +576,38 @@ export default function AvatarCanvas({
     let animId = null;
     const freqData = new Uint8Array(256);
 
-    // Frame rate throttle tracking by tier:
-    // Mobile = 30fps cap, Tablet = 60fps cap, Desktop = uncapped / vsync
+    // Frame rate throttle by tier: Tablet = 60fps cap, Desktop = uncapped/vsync.
+    // Mobile is ADAPTIVE: start at 60fps so lip-sync looks smooth on capable
+    // phones; if the device can't hold ~50fps over a 3s window (weak GPU or
+    // thermal throttling), drop to 30fps for the rest of the session. One-way
+    // switch keeps the feel stable and saves battery exactly where it's needed.
     let lastFrameTime = performance.now();
+    let mobileFpsCap = 60;
+    let fpsWinFrames = 0;
+    let fpsWinSlow = 0;
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
 
       const now = performance.now();
       const currentTier = tierRef.current;
-      const targetFps = currentTier === 'mobile' ? 30 : (currentTier === 'tablet' ? 60 : 0);
+
+      // Sample the real rendered cadence while at 60 (gaps > 500ms are tab
+      // switches, not slow frames). 40%+ slow frames over ~180 frames = drop.
+      if (currentTier === 'mobile' && mobileFpsCap === 60) {
+        const renderedInterval = now - lastFrameTime;
+        if (renderedInterval < 500) {
+          fpsWinFrames++;
+          if (renderedInterval > 21) fpsWinSlow++; // below ~48fps
+        }
+        if (fpsWinFrames >= 180) {
+          if (fpsWinSlow > fpsWinFrames * 0.4) mobileFpsCap = 30;
+          fpsWinFrames = 0;
+          fpsWinSlow = 0;
+        }
+      }
+
+      const targetFps = currentTier === 'mobile' ? mobileFpsCap : (currentTier === 'tablet' ? 60 : 0);
       const minInterval = targetFps > 0 ? (1000 / targetFps) : 0;
 
       if (minInterval > 0) {
