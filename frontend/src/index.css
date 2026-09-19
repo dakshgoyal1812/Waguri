@@ -617,6 +617,9 @@ body {
   display: grid;
   place-items: center;
   animation: fade-in 0.25s ease;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px;
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 .modal-content {
@@ -702,7 +705,8 @@ body {
 /* ============ background picker modal ============ */
 .bg-picker-modal {
   width: min(620px, calc(100vw - 24px));
-  max-height: 90dvh;
+  max-height: min(720px, calc(100dvh - 32px));
+  height: auto;
   display: flex;
   flex-direction: column;
   border-radius: 20px;
@@ -711,17 +715,34 @@ body {
   border: 1px solid var(--border-glass);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
   animation: modalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  margin: auto;
 }
 
 .bg-picker-body {
   padding: 16px 20px;
   overflow-y: auto;
+  min-height: 0;
+  max-height: 100%;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  flex: 1;
+  flex: 1 1 auto;
+}
+
+.bg-picker-body::-webkit-scrollbar {
+  width: 6px;
+}
+.bg-picker-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.bg-picker-body::-webkit-scrollbar-thumb {
+  background: rgba(168, 85, 247, 0.35);
+  border-radius: 9999px;
+}
+.bg-picker-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 85, 247, 0.6);
 }
 
 .bg-options {
@@ -835,12 +856,13 @@ body {
   }
   .bg-picker-modal {
     width: calc(100vw - 20px);
-    max-height: 86dvh;
+    max-height: calc(100dvh - 24px);
     border-radius: 18px;
   }
   .bg-picker-body {
     padding: 12px 14px;
     gap: 10px;
+    min-height: 0;
   }
   .bg-options {
     grid-template-columns: repeat(2, 1fr);
