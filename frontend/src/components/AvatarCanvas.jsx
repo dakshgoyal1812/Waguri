@@ -109,6 +109,7 @@ export default function AvatarCanvas({
   const sourceNodeRef = useRef(null);
   const [loadProgress, setLoadProgress] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loaderVisible, setLoaderVisible] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [retryKey, setRetryKey] = useState(0); // bumped by the Retry button
 
@@ -318,54 +319,55 @@ export default function AvatarCanvas({
       if (currentTier === 'mobile') {
         if (isChatOpen) {
           // Phone with chat bottom sheet open:
-          // Position Waguri prominently in the top ~52% open screen above the chat card
+          // Position Waguri prominently in the top ~48% open screen above the chat card
           return {
-            pos: new THREE.Vector3(0, 1.18, 1.95),
-            look: new THREE.Vector3(0, 0.98, 0),
-            fov: 34,
+            pos: new THREE.Vector3(0, 1.25, 1.70),
+            look: new THREE.Vector3(0, 1.05, 0),
+            fov: 33,
           };
         }
-        // Phone with chat closed (full portrait view):
+        // Phone with chat closed (full-body idle view per design.md, feet near bottom third):
         return {
-          pos: new THREE.Vector3(0, 1.20, 2.15),
-          look: new THREE.Vector3(0, 1.05, 0),
-          fov: 33,
+          pos: new THREE.Vector3(0, 0.88, 2.75),
+          look: new THREE.Vector3(0, 0.82, 0),
+          fov: 36,
         };
       }
 
       if (currentTier === 'tablet') {
         if (isChatOpen) {
           // Tablet with chat card on the side:
-          // Subtle horizontal shift (-0.14) so avatar is framed next to the card
+          // Shift left (-0.20) so avatar is beautifully framed beside the card with headroom
           return {
-            pos: new THREE.Vector3(-0.14, 1.25, 1.65),
-            look: new THREE.Vector3(-0.06, 1.10, 0),
+            pos: new THREE.Vector3(-0.20, 1.22, 1.80),
+            look: new THREE.Vector3(-0.10, 1.10, 0),
             fov: 32,
           };
         }
         return {
-          pos: new THREE.Vector3(0, 1.26, 1.58),
-          look: new THREE.Vector3(0, 1.11, 0),
+          pos: new THREE.Vector3(0, 1.22, 1.80),
+          look: new THREE.Vector3(0, 1.10, 0),
           fov: 32,
         };
       }
 
-      // Desktop (1025px+): centered head-to-waist framing
+      // Desktop (1025px+): generous headroom, natural framing without cutting off hair or arms
       if (isChatOpen) {
+        // Shift left (-0.28) into the open viewport area away from the 420px chat card
         return {
-          pos: new THREE.Vector3(-0.10, 1.28, 1.45),
-          look: new THREE.Vector3(-0.04, 1.12, 0),
+          pos: new THREE.Vector3(-0.28, 1.16, 1.92),
+          look: new THREE.Vector3(-0.16, 1.06, 0),
           fov: 32,
         };
       }
       return {
-        pos: new THREE.Vector3(0, 1.28, 1.45),
-        look: new THREE.Vector3(0, 1.12, 0),
+        pos: new THREE.Vector3(0, 1.16, 1.92),
+        look: new THREE.Vector3(0, 1.06, 0),
         fov: 32,
       };
     };
 
-    const currentLook = new THREE.Vector3(0, 1.12, 0);
+    const currentLook = new THREE.Vector3(0, 1.06, 0);
     const initialParams = getTargetCameraParams(width, height, chatOpenRef.current, tierRef.current);
 
     const camera = new THREE.PerspectiveCamera(initialParams.fov, width / height, 0.1, 20);
@@ -409,73 +411,121 @@ export default function AvatarCanvas({
     let disposed = false;
     let cleanupModel = null;
 
-    // Load VRM Avatar
+    // Load VRM Avatar safely after MeshoptDecoder is ready
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
     loader.register((parser) => new VRMLoaderPlugin(parser));
 
-    loader.load(
-      '/waguri.vrm',
-      (gltf) => {
-        if (disposed) return;
-        const vrm = gltf.userData.vrm;
-        if (!vrm) {
-          setLoadError('VRM data not found in gltf payload');
-          return;
+    const startVrmLoad = () => {
+      loader.load(
+        '/waguri.vrm',
+        (gltf) => {
+          if (disposed) return;
+          const vrm = gltf.userData.vrm;
+          if (!vrm) {
+            setLoadError('VRM data not found in gltf payload');
+            return;
+          }
+
+          // VRM 1.0 optimization (best-effort; interleaved buffers are safely skipped)
+          try {
+            VRMUtils.removeUnnecessaryVertices(gltf.scene);
+          } catch {
+            // Interleaved buffers cannot be pruned by VRMUtils; benign and safe to skip
+          }
+          try {
+            VRMUtils.removeUnnecessaryJoints(gltf.scene);
+          } catch {
+            // Benign and safe to skip
+          }
+
+          // Upgrade unlit hair materials (MeshBasicMaterial) to MeshStandardMaterial
+          // so her hair receives soft anime shading, lighting depth, and highlights instead
+          // of rendering as an unlit flat magenta block.
+          vrm.scene.traverse((obj) => {
+            if (obj.isMesh && obj.material) {
+              const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+              mats.forEach((mat, idx) => {
+                if (mat.name && mat.name.toLowerCase().includes('hair') && (mat.isMeshBasicMaterial || !mat.isMeshStandardMaterial)) {
+                  if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+                  const standardMat = new THREE.MeshStandardMaterial({
+                    map: mat.map,
+                    color: mat.color,
+                    roughness: 0.65,
+                    metalness: 0.05,
+                    alphaTest: mat.alphaTest || 0.5,
+                    transparent: mat.transparent,
+                    side: mat.side,
+                  });
+                  standardMat.needsUpdate = true;
+                  if (Array.isArray(obj.material)) {
+                    obj.material[idx] = standardMat;
+                  } else {
+                    obj.material = standardMat;
+                  }
+                }
+              });
+            }
+          });
+
+          // Position avatar
+          vrm.scene.position.set(0, 0, 0);
+          vrm.scene.rotation.y = 0; // facing camera
+          scene.add(vrm.scene);
+
+          if (vrm.lookAt) vrm.lookAt.target = lookTarget; // cursor eye-tracking
+
+          vrmRef.current = vrm;
+          setLoadProgress(100);
+          setIsLoaded(true);
+          // Wait for first render frames before starting loader fade-out
+          setTimeout(() => {
+            if (!disposed) setLoaderVisible(false);
+          }, 450);
+
+          entranceState.current = { active: true, t: 0, duration: 2.4 }; // greeting bow
+          onModelLoaded(vrm);
+
+          // Tiny debug/verification probe (harmless in prod): lets a console or
+          // test check that visemes actually move while she speaks.
+          window.__waguriAvatar = {
+            loaded: () => !!vrmRef.current,
+            speaking: () => speakingRef.current,
+            energy: () => energyRef.current,
+            visemes: () => {
+              const { aa, ih, ou, ee, oh } = expressionWeights.current;
+              return { aa, ih, ou, ee, oh };
+            },
+          };
+
+          console.log('[AvatarCanvas] Waguri VRM 1.0 model loaded successfully');
+        },
+        (progress) => {
+          if (progress.total > 0) {
+            const pct = Math.round((progress.loaded / progress.total) * 100);
+            setLoadProgress(Math.min(99, pct));
+          } else {
+            setLoadProgress((p) => Math.min(92, p + 12));
+          }
+        },
+        (error) => {
+          if (disposed) return;
+          console.error('[AvatarCanvas] VRM loading error:', error);
+          setLoadError(error.message || 'Failed to load VRM model');
         }
+      );
+    };
 
-        // VRM 1.0 optimization (best-effort; interleaved buffers are safely skipped)
-        try {
-          VRMUtils.removeUnnecessaryVertices(gltf.scene);
-        } catch {
-          // Interleaved buffers cannot be pruned by VRMUtils; benign and safe to skip
-        }
-        try {
-          VRMUtils.removeUnnecessaryJoints(gltf.scene);
-        } catch {
-          // Benign and safe to skip
-        }
-
-        // Position avatar
-        vrm.scene.position.set(0, 0, 0);
-        vrm.scene.rotation.y = 0; // facing camera
-        scene.add(vrm.scene);
-
-        if (vrm.lookAt) vrm.lookAt.target = lookTarget; // cursor eye-tracking
-
-        vrmRef.current = vrm;
-        setIsLoaded(true);
-        entranceState.current = { active: true, t: 0, duration: 2.4 }; // greeting bow
-        onModelLoaded(vrm);
-
-        // Tiny debug/verification probe (harmless in prod): lets a console or
-        // test check that visemes actually move while she speaks.
-        window.__waguriAvatar = {
-          loaded: () => !!vrmRef.current,
-          speaking: () => speakingRef.current,
-          energy: () => energyRef.current,
-          visemes: () => {
-            const { aa, ih, ou, ee, oh } = expressionWeights.current;
-            return { aa, ih, ou, ee, oh };
-          },
-        };
-
-        console.log('[AvatarCanvas] Waguri VRM 1.0 model loaded successfully');
-      },
-      (progress) => {
-        if (progress.total > 0) {
-          const pct = Math.round((progress.loaded / progress.total) * 100);
-          setLoadProgress(pct);
-        } else {
-          setLoadProgress((p) => Math.min(95, p + 10));
-        }
-      },
-      (error) => {
-        if (disposed) return;
-        console.error('[AvatarCanvas] VRM loading error:', error);
-        setLoadError(error.message || 'Failed to load VRM model');
-      }
-    );
+    if (MeshoptDecoder.ready) {
+      MeshoptDecoder.ready.then(() => {
+        if (!disposed) startVrmLoad();
+      }).catch((err) => {
+        console.warn('[AvatarCanvas] MeshoptDecoder.ready error:', err);
+        if (!disposed) startVrmLoad();
+      });
+    } else {
+      startVrmLoad();
+    }
 
     cleanupModel = () => {
       const vrm = vrmRef.current;
@@ -557,6 +607,16 @@ export default function AvatarCanvas({
         camera.updateProjectionMatrix();
       }
 
+      // Smooth lighting transition between idle (bright day) and active chat (dusk/purple warmth)
+      const isChatActive = chatOpenRef.current;
+      const targetAmbientColor = isChatActive ? new THREE.Color(0xf3e8ff) : new THREE.Color(0xffffff);
+      const targetKeyColor = isChatActive ? new THREE.Color(0xffedd5) : new THREE.Color(0xfff0f5);
+      const targetFillColor = isChatActive ? new THREE.Color(0xd8b4fe) : new THREE.Color(0xe0e7ff);
+      const lightLerpSpeed = Math.min(1, delta * 2.5);
+      ambientLight.color.lerp(targetAmbientColor, lightLerpSpeed);
+      keyLight.color.lerp(targetKeyColor, lightLerpSpeed);
+      fillLight.color.lerp(targetFillColor, lightLerpSpeed);
+
       const vrm = vrmRef.current;
       if (vrm) {
         const humanoid = vrm.humanoid;
@@ -587,8 +647,11 @@ export default function AvatarCanvas({
         // Eyes-only tracking (≤30° H / ≤20° V)
         const lookYaw = THREE.MathUtils.clamp(look.smoothX * 0.5, -0.52, 0.52);
         const lookPitch = THREE.MathUtils.clamp(-look.smoothY * 0.34, -0.35, 0.35);
-        const headYawFromCursor = lookYaw * 0.12;
-        const headPitchFromCursor = lookPitch * 0.12;
+
+        // On laptop/desktop: only eyes track the cursor — head stays in natural posture
+        const isDesktop = currentTier === 'desktop';
+        const headYawFromCursor = isDesktop ? 0 : lookYaw * 0.12;
+        const headPitchFromCursor = isDesktop ? 0 : lookPitch * 0.12;
 
         // ---- eye saccades (micro darts layered on top) ----
         const sac = saccadeState.current;
@@ -727,21 +790,34 @@ export default function AvatarCanvas({
               + (speakingRef.current ? Math.sin(elapsed * 8.5) * 0.03 * voiceEnergy : 0);
           }
 
-          // Natural arm rest pose — applied EVERY frame so the idle loop never
-          // snaps back to the VRM's stiff T-pose, with breathing-coupled micro-sway.
+          // Natural arm rest pose — relaxed anime posture with gentle elbow bend and soft finger curl
           const lUpperArm = humanoid.getNormalizedBoneNode('leftUpperArm');
           const rUpperArm = humanoid.getNormalizedBoneNode('rightUpperArm');
           const lLowerArm = humanoid.getNormalizedBoneNode('leftLowerArm');
           const rLowerArm = humanoid.getNormalizedBoneNode('rightLowerArm');
           const lHand = humanoid.getNormalizedBoneNode('leftHand');
           const rHand = humanoid.getNormalizedBoneNode('rightHand');
-          if (lUpperArm) lUpperArm.rotation.set(-0.06 + breath * 0.01, 0, -1.22 + breath * 0.025);
-          if (rUpperArm) rUpperArm.rotation.set(-0.06 + breath * 0.01, 0, 1.22 - breath * 0.025);
-          // negative X bends the hanging forearm forward (+Z)
-          if (lLowerArm) lLowerArm.rotation.set(-0.26, 0, -0.05);
-          if (rLowerArm) rLowerArm.rotation.set(-0.26, 0, 0.05);
-          if (lHand) lHand.rotation.set(0, 0, -0.08 + Math.sin(elapsed * 1.3) * 0.02);
-          if (rHand) rHand.rotation.set(0, 0, 0.08 + Math.sin(elapsed * 1.3 + 1.7) * 0.02);
+
+          if (lUpperArm) lUpperArm.rotation.set(0.08 + breath * 0.015, 0.05, -1.28 + breath * 0.02);
+          if (rUpperArm) rUpperArm.rotation.set(0.08 + breath * 0.015, -0.05, 1.28 - breath * 0.02);
+
+          // Gentle elbow bend forward (~20°) so arms aren't rigid sticks
+          if (lLowerArm) lLowerArm.rotation.set(-0.35, 0.12, -0.15);
+          if (rLowerArm) rLowerArm.rotation.set(-0.35, -0.12, 0.15);
+
+          // Natural relaxed wrists
+          if (lHand) lHand.rotation.set(0.08, 0.10, -0.05);
+          if (rHand) rHand.rotation.set(0.08, -0.10, 0.05);
+
+          // Softly curl fingers so hands aren't flat boards
+          const fingerBones = [
+            'leftIndexProximal', 'leftMiddleProximal', 'leftRingProximal', 'leftLittleProximal',
+            'rightIndexProximal', 'rightMiddleProximal', 'rightRingProximal', 'rightLittleProximal',
+          ];
+          for (const fb of fingerBones) {
+            const node = humanoid.getNormalizedBoneNode(fb);
+            if (node) node.rotation.z = fb.startsWith('left') ? 0.22 : -0.22;
+          }
         }
 
         // ---- 3a. Entrance greeting bow (on model load): spine bows, head dips, a
@@ -850,8 +926,10 @@ export default function AvatarCanvas({
 
   return (
     <div className="canvas-container" ref={mountRef}>
-      {!isLoaded && !loadError && (
-        <BirdLoader progress={loadProgress} />
+      {loaderVisible && !loadError && (
+        <div className={`vrm-loading-wrapper ${isLoaded ? 'fade-out' : ''}`}>
+          <BirdLoader progress={loadProgress} />
+        </div>
       )}
 
       {loadError && (
