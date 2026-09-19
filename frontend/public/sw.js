@@ -1,5 +1,9 @@
-// Waguri AI Persona Companion — PWA Service Worker (v3)
-const CACHE_NAME = 'waguri-shell-v3';
+// Waguri AI Persona Companion — PWA Service Worker (v4)
+// v4: cache version bumped AND navigations switched to network-first.
+// The old stale-while-revalidate shell kept serving the previous UI build
+// (old mood bar cut off at the bottom) even after redeploy, because the
+// cached hashed assets could never revalidate against a changed build.
+const CACHE_NAME = 'waguri-shell-v4';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -34,7 +38,12 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: Network-first for API; Cache-first with background revalidation for static assets
+// Fetch:
+//  - API calls and non-GET requests always hit the network.
+//  - Page navigations are NETWORK-FIRST (fresh UI on every visit; cached
+//    shell only serves as the offline fallback).
+//  - Same-origin static assets stay stale-while-revalidate (instant load,
+//    quietly refreshed for the next visit).
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -48,28 +57,42 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. For app shell and static resources, Stale-While-Revalidate
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request)
+  // 3. App shell navigations: network-first with offline fallback to the shell
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseToCache);
+              cache.put('/index.html', responseToCache);
             });
           }
           return networkResponse;
         })
-        .catch(() => {
-          // If offline and request is navigation, fallback to /index.html
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
-          return null;
-        });
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
 
-      return cachedResponse || fetchPromise;
-    })
-  );
+  // 4. Same-origin static resources: stale-while-revalidate
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        const fetchPromise = fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+              const responseToCache = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
+            }
+            return networkResponse;
+          })
+          .catch(() => cachedResponse || null);
+
+        return cachedResponse || fetchPromise;
+      })
+    );
+  }
 });

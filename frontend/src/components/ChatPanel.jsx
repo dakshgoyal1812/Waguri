@@ -39,7 +39,7 @@ export default function ChatPanel({
 }) {
   const [inputText, setInputText] = useState('');
   const [thinkingIdx, setThinkingIdx] = useState(0);
-  const messagesEndRef = useRef(null);
+  const messagesListRef = useRef(null);
 
   // rotate the contextual thinking line while she generates
   useEffect(() => {
@@ -49,8 +49,13 @@ export default function ChatPanel({
     return () => clearInterval(t);
   }, [isLoading]);
 
+  // Scroll ONLY the message list — never scrollIntoView(), which also walks up
+  // and scrolls clipped ancestors (.stage / body). On phones that shifts the
+  // whole fixed stage up after the soft keyboard opens: topbar/logo cut off at
+  // the top and a dead empty strip left at the bottom of the screen.
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const list = messagesListRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
   };
 
   useEffect(() => {
@@ -87,7 +92,7 @@ export default function ChatPanel({
       </div>
 
       {/* Messages */}
-      <div className="chat-messages">
+      <div className="chat-messages" ref={messagesListRef}>
         {messages.length === 0 && (
           <div
             style={{
@@ -180,7 +185,7 @@ export default function ChatPanel({
           </div>
         )}
 
-        <div ref={messagesEndRef} />
+        <div />
       </div>
 
       {/* Quick Prompts & Input */}
