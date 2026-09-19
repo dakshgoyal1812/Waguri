@@ -72,8 +72,28 @@ const VOWEL_FORMANTS = {
   ou: [320, 900],
 };
 
-// Cursor eye-tracking is desktop-only (acceptance: disabled on touch/mobile).
-const EYE_TRACKING_QUERY = '(pointer: fine)';
+// Device tier breakpoints
+const TIER_MEDIA = {
+  mobile: '(max-width: 767px)',
+  tablet: '(min-width: 768px) and (max-width: 1024px)',
+  desktop: '(min-width: 1025px)',
+};
+
+const isTouchDevice = () => {
+  if (typeof window === 'undefined') return false;
+  return (
+    'ontouchstart' in window ||
+    (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
+    (navigator.msMaxTouchPoints && navigator.msMaxTouchPoints > 0)
+  );
+};
+
+const getDeviceTier = () => {
+  if (typeof window === 'undefined') return 'desktop';
+  if (window.matchMedia(TIER_MEDIA.mobile).matches) return 'mobile';
+  if (window.matchMedia(TIER_MEDIA.tablet).matches) return 'tablet';
+  return 'desktop';
+};
 
 export default function AvatarCanvas({
   currentEmotion = 'neutral',
@@ -129,12 +149,18 @@ export default function AvatarCanvas({
     blinkProgress: 0,
   });
 
-  // Cursor eye-tracking: normalized mouse position + smoothed lean targets
+  // Device tier & touch state
+  const isTouch = useRef(isTouchDevice());
+  const tierRef = useRef(getDeviceTier());
+
+  // Cursor & touch eye-tracking + touch idle look-around
   const lookState = useRef({
-    enabled: typeof window !== 'undefined' && window.matchMedia?.(EYE_TRACKING_QUERY).matches,
-    rawX: 0, rawY: 0,          // latest mousemove, normalized [-1, 1]
+    enabled: true,
+    isTouch: isTouchDevice(),
+    rawX: 0, rawY: 0,          // latest mouse/touch drag, normalized [-1, 1]
     smoothX: 0, smoothY: 0,    // damped values used by the rAF loop
-    lastMoveAt: 0,             // fall back to ambient eye motion when quiet
+    lastMoveAt: 0,             // timestamp of last user input
+    touchActive: false,
   });
 
   // Eye saccades (airi eye-motions): tiny eye darts layered on the gaze when the
@@ -207,9 +233,8 @@ export default function AvatarCanvas({
     };
   }, [audioElement]);
 
-  // Cursor & touch eye-tracking input (mousemove + touchstart/touchmove)
+  // Cursor & touch eye-tracking input (mousemove + touchstart/touchmove/touchend)
   useEffect(() => {
-    if (!lookState.current.enabled) return;
     const onMove = (e) => {
       const nx = (e.clientX / window.innerWidth) * 2 - 1;   // [-1, 1]
       const ny = (e.clientY / window.innerHeight) * 2 - 1;
@@ -219,7 +244,22 @@ export default function AvatarCanvas({
       document.documentElement.style.setProperty('--bg-pan-x', `${-nx * 18}px`);
       document.documentElement.style.setProperty('--bg-pan-y', `${-ny * 14}px`);
     };
-    const onTouch = (e) => {
+
+    const onTouchStart = (e) => {
+      if (e.touches && e.touches[0]) {
+        lookState.current.touchActive = true;
+        const t = e.touches[0];
+        const nx = (t.clientX / window.innerWidth) * 2 - 1;
+        const ny = (t.clientY / window.innerHeight) * 2 - 1;
+        lookState.current.rawX = Math.max(-1, Math.min(1, nx));
+        lookState.current.rawY = Math.max(-1, Math.min(1, ny));
+        lookState.current.lastMoveAt = performance.now();
+        document.documentElement.style.setProperty('--bg-pan-x', `${-nx * 18}px`);
+        document.documentElement.style.setProperty('--bg-pan-y', `${-ny * 14}px`);
+      }
+    };
+
+    const onTouchMove = (e) => {
       if (e.touches && e.touches[0]) {
         const t = e.touches[0];
         const nx = (t.clientX / window.innerWidth) * 2 - 1;
@@ -231,13 +271,34 @@ export default function AvatarCanvas({
         document.documentElement.style.setProperty('--bg-pan-y', `${-ny * 14}px`);
       }
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('touchstart', onTouch, { passive: true });
-    window.addEventListener('touchmove', onTouch, { passive: true });
+
+    const onTouchEnd = () => {
+      lookState.current.touchActive = false;
+    };
+
+    window.addEventListener('mousemove', onMove, { passive: true });
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    // Breakpoint matchMedia listeners for tier changes
+    const mqlMobile = window.matchMedia(TIER_MEDIA.mobile);
+    const mqlTablet = window.matchMedia(TIER_MEDIA.tablet);
+    const updateTier = () => {
+      tierRef.current = getDeviceTier();
+      isTouch.current = isTouchDevice();
+      lookState.current.isTouch = isTouch.current;
+    };
+    mqlMobile.addEventListener('change', updateTier);
+    mqlTablet.addEventListener('change', updateTier);
+
     return () => {
       window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('touchstart', onTouch);
-      window.removeEventListener('touchmove', onTouch);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      mqlMobile.removeEventListener('change', updateTier);
+      mqlTablet.removeEventListener('change', updateTier);
     };
   }, []);
 
@@ -251,53 +312,81 @@ export default function AvatarCanvas({
 
     const scene = new THREE.Scene();
 
-    // Responsive camera framing for phones vs desktop
-    const getTargetCameraParams = (w, h, isChatOpen) => {
-      const isMobile = w <= 768 || (w / h) < 0.9;
-      if (!isMobile) {
-        // Desktop: centered head-to-waist framing
+    // Responsive camera framing for phones vs tablets vs desktop
+    const getTargetCameraParams = (w, h, isChatOpen, tier) => {
+      const currentTier = tier || getDeviceTier();
+      if (currentTier === 'mobile') {
+        if (isChatOpen) {
+          // Phone with chat bottom sheet open:
+          // Position Waguri prominently in the top ~52% open screen above the chat card
+          return {
+            pos: new THREE.Vector3(0, 1.18, 1.95),
+            look: new THREE.Vector3(0, 0.98, 0),
+            fov: 34,
+          };
+        }
+        // Phone with chat closed (full portrait view):
         return {
-          pos: new THREE.Vector3(0, 1.28, 1.45),
-          look: new THREE.Vector3(0, 1.12, 0),
+          pos: new THREE.Vector3(0, 1.20, 2.15),
+          look: new THREE.Vector3(0, 1.05, 0),
+          fov: 33,
+        };
+      }
+
+      if (currentTier === 'tablet') {
+        if (isChatOpen) {
+          // Tablet with chat card on the side:
+          // Subtle horizontal shift (-0.14) so avatar is framed next to the card
+          return {
+            pos: new THREE.Vector3(-0.14, 1.25, 1.65),
+            look: new THREE.Vector3(-0.06, 1.10, 0),
+            fov: 32,
+          };
+        }
+        return {
+          pos: new THREE.Vector3(0, 1.26, 1.58),
+          look: new THREE.Vector3(0, 1.11, 0),
           fov: 32,
         };
       }
+
+      // Desktop (1025px+): centered head-to-waist framing
       if (isChatOpen) {
-        // Phone with chat bottom sheet open:
-        // Position Waguri prominently in the top ~50% open screen above the chat card
         return {
-          pos: new THREE.Vector3(0, 1.16, 1.90),
-          look: new THREE.Vector3(0, 0.96, 0),
-          fov: 34,
+          pos: new THREE.Vector3(-0.10, 1.28, 1.45),
+          look: new THREE.Vector3(-0.04, 1.12, 0),
+          fov: 32,
         };
       }
-      // Phone with chat closed (full portrait view):
-      // Elegant full portrait framing head-to-waist on vertical phone screen
       return {
-        pos: new THREE.Vector3(0, 1.20, 2.15),
-        look: new THREE.Vector3(0, 1.05, 0),
-        fov: 33,
+        pos: new THREE.Vector3(0, 1.28, 1.45),
+        look: new THREE.Vector3(0, 1.12, 0),
+        fov: 32,
       };
     };
 
     const currentLook = new THREE.Vector3(0, 1.12, 0);
-    const initialParams = getTargetCameraParams(width, height, chatOpenRef.current);
+    const initialParams = getTargetCameraParams(width, height, chatOpenRef.current, tierRef.current);
 
     const camera = new THREE.PerspectiveCamera(initialParams.fov, width / height, 0.1, 20);
     camera.position.copy(initialParams.pos);
     currentLook.copy(initialParams.look);
     camera.lookAt(currentLook);
 
+    const initialTier = tierRef.current;
+    const maxPr = initialTier === 'mobile' ? 1.25 : (initialTier === 'tablet' ? 1.5 : 2.0);
+
     const renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: initialTier !== 'mobile', // conserve mobile GPU
       alpha: true,
       powerPreference: 'high-performance',
     });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.setSize(width, height, false);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPr));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = false; // Disable heavy shadow maps on mobile/web
     container.appendChild(renderer.domElement);
 
     // Lights
@@ -398,32 +487,67 @@ export default function AvatarCanvas({
       delete window.__waguriAvatar;
     };
 
-    // Handle Window Resize
-    const handleResize = () => {
+    // Handle Container / Window Resize with ResizeObserver
+    const handleResize = (newW, newH) => {
       if (!container) return;
-      width = container.clientWidth;
-      height = container.clientHeight;
+      width = newW || container.clientWidth || 400;
+      height = newH || container.clientHeight || 500;
+      if (width === 0 || height === 0) return;
+
       camera.aspect = width / height;
-      const targetParams = getTargetCameraParams(width, height, chatOpenRef.current);
+      const targetParams = getTargetCameraParams(width, height, chatOpenRef.current, tierRef.current);
       camera.fov = targetParams.fov;
       camera.updateProjectionMatrix();
-      renderer.setSize(width, height);
+      renderer.setSize(width, height, false);
+      const pr = tierRef.current === 'mobile' ? 1.25 : (tierRef.current === 'tablet' ? 1.5 : 2.0);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pr));
     };
 
-    window.addEventListener('resize', handleResize);
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width: w, height: h } = entry.contentRect;
+          if (w > 0 && h > 0) {
+            handleResize(w, h);
+          }
+        }
+      });
+      resizeObserver.observe(container);
+    }
+    const onWinResize = () => handleResize(container.clientWidth, container.clientHeight);
+    window.addEventListener('resize', onWinResize);
 
     // Animation Loop
     const clock = new THREE.Clock();
     let animId = null;
     const freqData = new Uint8Array(256);
 
+    // Frame rate throttle tracking by tier:
+    // Mobile = 30fps cap, Tablet = 60fps cap, Desktop = uncapped / vsync
+    let lastFrameTime = performance.now();
+
     const animate = () => {
       animId = requestAnimationFrame(animate);
+
+      const now = performance.now();
+      const currentTier = tierRef.current;
+      const targetFps = currentTier === 'mobile' ? 30 : (currentTier === 'tablet' ? 60 : 0);
+      const minInterval = targetFps > 0 ? (1000 / targetFps) : 0;
+
+      if (minInterval > 0) {
+        const elapsedSinceLast = now - lastFrameTime;
+        if (elapsedSinceLast < minInterval - 2) { // 2ms tolerance for frame jitter
+          return;
+        }
+      }
+      lastFrameTime = now;
+
       const delta = clock.getDelta();
       const elapsed = clock.getElapsedTime();
 
       // Smooth camera interpolation for responsive phone/desktop & chat toggle transitions
-      const targetParams = getTargetCameraParams(width, height, chatOpenRef.current);
+      const targetParams = getTargetCameraParams(width, height, chatOpenRef.current, currentTier);
       const camLerpSpeed = Math.min(1, delta * 3.5);
       camera.position.lerp(targetParams.pos, camLerpSpeed);
       currentLook.lerp(targetParams.look, camLerpSpeed);
@@ -437,42 +561,51 @@ export default function AvatarCanvas({
       if (vrm) {
         const humanoid = vrm.humanoid;
 
-        // ---- cursor eye-tracking (damped, clamped to human ranges: 30° H / 20° V) ----
+        // ---- cursor & touch eye-tracking + touch idle look-around ----
         const look = lookState.current;
-        const cursorIdle = performance.now() - look.lastMoveAt > 4000;
-        if (look.enabled) {
-          const k = Math.min(1, delta * 4); // frame-rate-independent damping — no jitter
-          const targetX = cursorIdle ? 0 : look.rawX;
-          const targetY = cursorIdle ? 0 : look.rawY;
-          look.smoothX += (targetX - look.smoothX) * k;
-          look.smoothY += (targetY - look.smoothY) * k;
+        const isTouchDev = look.isTouch;
+        const touchIdle = isTouchDev && !look.touchActive && (now - look.lastMoveAt > 2200);
+        const cursorIdle = !isTouchDev && (now - look.lastMoveAt > 4000);
+
+        let targetGazeX = 0;
+        let targetGazeY = 0;
+
+        if (isTouchDev && touchIdle) {
+          // Touch device idle: subtle, organic look-around drift (slow sine-wave)
+          // so she doesn't stare blankly into space
+          targetGazeX = Math.sin(elapsed * 0.45) * 0.28 + Math.sin(elapsed * 0.95) * 0.10;
+          targetGazeY = Math.cos(elapsed * 0.35) * 0.16 + Math.sin(elapsed * 0.65) * 0.08;
+        } else if (look.enabled) {
+          targetGazeX = cursorIdle ? 0 : look.rawX;
+          targetGazeY = cursorIdle ? 0 : look.rawY;
         }
 
-        // Eyes-only cursor tracking (airi lookAt style): the EYES follow the
-        // cursor fully; the head only leans a tiny ~4° for organic feel.
-        const lookYaw = look.enabled ? THREE.MathUtils.clamp(look.smoothX * 0.5, -0.52, 0.52) : 0;   // eyes ≤30°
-        const lookPitch = look.enabled ? THREE.MathUtils.clamp(-look.smoothY * 0.34, -0.35, 0.35) : 0; // eyes ≤20°
-        const headYawFromCursor = look.enabled ? lookYaw * 0.12 : 0;   // head barely follows
-        const headPitchFromCursor = look.enabled ? lookPitch * 0.12 : 0;
+        const k = Math.min(1, delta * (isTouchDev && touchIdle ? 2.5 : 4.5));
+        look.smoothX += (targetGazeX - look.smoothX) * k;
+        look.smoothY += (targetGazeY - look.smoothY) * k;
 
-        // ---- eye saccades (airi port): ambient micro darts when the cursor is idle ----
+        // Eyes-only tracking (≤30° H / ≤20° V)
+        const lookYaw = THREE.MathUtils.clamp(look.smoothX * 0.5, -0.52, 0.52);
+        const lookPitch = THREE.MathUtils.clamp(-look.smoothY * 0.34, -0.35, 0.35);
+        const headYawFromCursor = lookYaw * 0.12;
+        const headPitchFromCursor = lookPitch * 0.12;
+
+        // ---- eye saccades (micro darts layered on top) ----
         const sac = saccadeState.current;
         const nowMs = performance.now();
         if (nowMs > sac.nextAt) {
-          sac.dx = (Math.random() * 2 - 1) * 0.4;
-          sac.dy = (Math.random() * 2 - 1) * 0.22;
+          sac.dx = (Math.random() * 2 - 1) * 0.35;
+          sac.dy = (Math.random() * 2 - 1) * 0.20;
           sac.until = nowMs + 150 + Math.random() * 400;
           sac.nextAt = nowMs + randomSaccadeInterval();
         }
-        const saccActive = nowMs < sac.until && (cursorIdle || !look.enabled);
+        const saccActive = nowMs < sac.until && (cursorIdle || touchIdle);
         const sacK = Math.min(1, delta * 14);
         sac.x += ((saccActive ? sac.dx : 0) - sac.x) * sacK;
         sac.y += ((saccActive ? sac.dy : 0) - sac.y) * sacK;
 
-        // Eyes track the cursor AND the saccade layer; the head only follows the
-        // cursor (saccades are eye-darts — head motion would look like staring).
-        const gazeX = (look.enabled ? look.smoothX : 0) + sac.x;
-        const gazeY = (look.enabled ? look.smoothY : 0) + sac.y;
+        const gazeX = look.smoothX + sac.x;
+        const gazeY = look.smoothY + sac.y;
         lookTarget.position.set(gazeX * 2.2, 1.34 - gazeY * 1.1, 2.5);
 
         // ---- 1. Audio Lip-Sync analysis (runs FIRST so the body layers below can
@@ -705,7 +838,8 @@ export default function AvatarCanvas({
     return () => {
       disposed = true;
       cancelAnimationFrame(animId);
-      window.removeEventListener('resize', handleResize);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', onWinResize);
       cleanupModel?.();
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
