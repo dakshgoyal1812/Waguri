@@ -69,75 +69,90 @@ export default function BackgroundPicker({ isOpen, onClose, background, onApply 
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ width: 'min(680px, calc(100vw - 32px))' }}>
+      <div className="bg-picker-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>Stage background</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>🖼️</span>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>Stage background</h3>
+          </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close modal"><X size={18} /></button>
         </div>
 
-        <div className="bg-options">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              className={`bg-option ${draftId === p.id ? 'selected' : ''}`}
-              onClick={() => applyDraft(p.id)}
-            >
-              <div className="bg-thumb">{thumbFor(p.id)}</div>
-              <span className="bg-name">{p.name}</span>
-              <span className="bg-desc">{p.desc}</span>
-            </button>
-          ))}
-          {draftCustom && (
-            <button
-              className={`bg-option ${draftId === 'custom' ? 'selected' : ''}`}
-              onClick={() => applyDraft('custom')}
-            >
-              <div className="bg-thumb">{thumbFor('custom')}</div>
-              <span className="bg-name">Custom image</span>
-              <span className="bg-desc">Your uploaded background</span>
-            </button>
-          )}
-        </div>
+        <div className="bg-picker-body">
+          <div className="bg-options">
+            {PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`bg-option ${draftId === p.id ? 'selected' : ''}`}
+                onClick={() => applyDraft(p.id)}
+              >
+                <div className="bg-thumb">{thumbFor(p.id)}</div>
+                <span className="bg-name">{p.name}</span>
+                <span className="bg-desc">{p.desc}</span>
+              </button>
+            ))}
+            {draftCustom && (
+              <button
+                key="custom"
+                type="button"
+                className={`bg-option ${draftId === 'custom' ? 'selected' : ''}`}
+                onClick={() => applyDraft('custom')}
+              >
+                <div className="bg-thumb">{thumbFor('custom')}</div>
+                <span className="bg-name">Custom image</span>
+                <span className="bg-desc">Your uploaded background</span>
+              </button>
+            )}
+          </div>
 
-        <button className="quick-pill" style={{ marginBottom: 14 }} onClick={() => fileRef.current?.click()}>
-          <ImagePlus size={13} style={{ verticalAlign: '-2px', marginRight: 5 }} />
-          Add custom background
-        </button>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
-
-        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', margin: '6px 0' }}>Preview</div>
-        <div style={{ height: 120, borderRadius: 12, overflow: 'hidden', position: 'relative', border: '1px solid var(--border-glass)' }}>
-          {draftId === 'sunset' && (
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'radial-gradient(125% 125% at -2% 101%, rgba(245, 87, 2, 1) 10.5%, rgba(245, 120, 2, 1) 16%, rgba(245, 140, 2, 1) 17.5%, rgba(245, 170, 100, 1) 25%, rgba(238, 174, 202, 1) 40%, rgba(202, 179, 214, 1) 70%, rgba(202, 179, 214, 1) 100%)',
-            }} />
-          )}
-          {draftId === 'paper' && (
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'radial-gradient(circle, #777 1.5px, transparent 1.5px), linear-gradient(45deg, #f5f5f5 0%, #e5e5e5 50%, #f5f5f5 100%)',
-              backgroundSize: '24px 24px',
-            }} />
-          )}
-          {draftId === 'wave' && <div className="cross-grid" style={{ position: 'absolute', inset: 0 }} />}
-          {draftId === 'midnight' && (
-            <div style={{ position: 'absolute', inset: 0, background: '#050505', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: '15%', left: '15%', width: 28, height: 28, borderRadius: '50%', boxShadow: '6px 6px 0 0 #fdfbd3' }} />
-              <div style={{ position: 'absolute', top: '25%', left: '45%', width: 3, height: 3, background: '#fff', borderRadius: '50%', boxShadow: '0 0 5px #fff' }} />
-              <div style={{ position: 'absolute', top: '60%', left: '65%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
-              <div style={{ position: 'absolute', top: '40%', left: '80%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
-            </div>
-          )}
-          {draftId === 'custom' && draftCustom && <div style={{ position: 'absolute', inset: 0, background: `url(${draftCustom}) center/cover` }} />}
-          {(draftId === 'transparent') && <div className="checker" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: '0.74rem', color: 'var(--text-muted)' }}>Transparent</div>}
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
           <button
+            type="button"
+            className="quick-pill"
+            style={{ alignSelf: 'flex-start', touchAction: 'manipulation' }}
+            onClick={() => fileRef.current?.click()}
+          >
+            <ImagePlus size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+            Add custom background
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
+
+          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginTop: 4 }}>Preview</div>
+          <div style={{ height: 110, borderRadius: 12, overflow: 'hidden', position: 'relative', border: '1px solid var(--border-glass)', flexShrink: 0 }}>
+            {draftId === 'sunset' && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'radial-gradient(125% 125% at -2% 101%, rgba(245, 87, 2, 1) 10.5%, rgba(245, 120, 2, 1) 16%, rgba(245, 140, 2, 1) 17.5%, rgba(245, 170, 100, 1) 25%, rgba(238, 174, 202, 1) 40%, rgba(202, 179, 214, 1) 70%, rgba(202, 179, 214, 1) 100%)',
+              }} />
+            )}
+            {draftId === 'paper' && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'radial-gradient(circle, #777 1.5px, transparent 1.5px), linear-gradient(45deg, #f5f5f5 0%, #e5e5e5 50%, #f5f5f5 100%)',
+                backgroundSize: '24px 24px',
+              }} />
+            )}
+            {draftId === 'wave' && <div className="cross-grid" style={{ position: 'absolute', inset: 0 }} />}
+            {draftId === 'midnight' && (
+              <div style={{ position: 'absolute', inset: 0, background: '#050505', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: '15%', left: '15%', width: 28, height: 28, borderRadius: '50%', boxShadow: '6px 6px 0 0 #fdfbd3' }} />
+                <div style={{ position: 'absolute', top: '25%', left: '45%', width: 3, height: 3, background: '#fff', borderRadius: '50%', boxShadow: '0 0 5px #fff' }} />
+                <div style={{ position: 'absolute', top: '60%', left: '65%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
+                <div style={{ position: 'absolute', top: '40%', left: '80%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
+              </div>
+            )}
+            {draftId === 'custom' && draftCustom && <div style={{ position: 'absolute', inset: 0, background: `url(${draftCustom}) center/cover` }} />}
+            {(draftId === 'transparent') && <div className="checker" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: '0.74rem', color: 'var(--text-muted)' }}>Transparent</div>}
+          </div>
+        </div>
+
+        <div className="bg-picker-footer">
+          <button
+            type="button"
             className="btn-primary"
+            style={{ padding: '9px 18px', touchAction: 'manipulation' }}
             onClick={() => { onApply({ id: draftId, custom: draftId === 'custom' ? draftCustom : '' }); onClose(); }}
           >
             Use this background

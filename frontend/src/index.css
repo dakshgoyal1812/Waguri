@@ -53,12 +53,15 @@ body {
   overflow: hidden;
 }
 
-/* animated background layer (wave or custom) */
+/* animated background layer (wave or custom) with smooth parallax scrolling */
 .bg-layer {
   position: absolute;
-  inset: 0;
+  inset: -30px;
   z-index: 0;
   overflow: hidden;
+  transform: translate3d(var(--bg-pan-x, 0px), var(--bg-pan-y, 0px), 0);
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+  will-change: transform;
 }
 .bg-custom {
   position: absolute;
@@ -688,11 +691,41 @@ body {
 }
 .pool-table td { padding: 7px 8px; border-bottom: 1px solid var(--border-glass); color: var(--text-secondary); }
 
-/* ============ background picker ============ */
-.bg-options { display: flex; gap: 14px; flex-wrap: wrap; margin: 12px 0; }
+/* ============ background picker modal ============ */
+.bg-picker-modal {
+  width: min(620px, calc(100vw - 24px));
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--surface-solid);
+  border: 1px solid var(--border-glass);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  animation: modalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bg-picker-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.bg-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 6px 0;
+}
+
 .bg-option {
-  width: 200px;
-  padding: 10px;
+  width: 100%;
+  padding: 8px;
   border-radius: 14px;
   border: 2px solid var(--border-glass);
   background: var(--input-bg);
@@ -700,22 +733,40 @@ body {
   text-align: left;
   transition: all 0.2s ease;
   color: var(--text-primary);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  flex-direction: column;
 }
 .bg-option:hover { transform: translateY(-2px); }
-.bg-option.selected { border-color: var(--accent-cyan); box-shadow: 0 0 0 3px rgba(34, 184, 207, 0.15); }
+.bg-option.selected {
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.22);
+  background: var(--surface-hover);
+}
 .bg-option .bg-thumb {
-  height: 110px;
+  width: 100%;
+  height: 80px;
   border-radius: 9px;
   overflow: hidden;
   position: relative;
   display: grid;
   place-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   border: 1px solid var(--border-glass);
 }
 .bg-option .bg-thumb .cross-grid { position: absolute; inset: 0; opacity: 0.9; }
-.bg-option .bg-name { font-weight: 700; font-size: 0.86rem; display: block; }
-.bg-option .bg-desc { font-size: 0.72rem; color: var(--text-muted); }
+.bg-option .bg-name { font-weight: 700; font-size: 0.82rem; display: block; line-height: 1.2; }
+.bg-option .bg-desc { font-size: 0.72rem; color: var(--text-muted); line-height: 1.2; margin-top: 2px; }
+
+.bg-picker-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-glass);
+  background: var(--surface-hover);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
 
 .checker {
   background-image:
@@ -773,6 +824,22 @@ body {
     height: 30px;
     border-radius: 9px;
     padding: 1.5px;
+  }
+  .bg-picker-modal {
+    width: calc(100vw - 20px);
+    max-height: 86dvh;
+    border-radius: 18px;
+  }
+  .bg-picker-body {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .bg-options {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .bg-option .bg-thumb {
+    height: 70px;
   }
 }
 
