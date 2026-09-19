@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LogOut, CheckCircle2, ShieldCheck, User } from 'lucide-react';
-import { supabase, ALLOWED_EMAILS, signInWithGoogle, signOutUser } from '../supabaseClient.js';
+import { supabase, isEmailAllowed, signInWithGoogle, signOutUser } from '../supabaseClient.js';
 
 export default function GoogleAuth({ onUserChange, compact = false }) {
   const [user, setUser] = useState(null);
@@ -20,13 +20,27 @@ export default function GoogleAuth({ onUserChange, compact = false }) {
   }, []);
 
   useEffect(() => {
+    // Check if OAuth provider returned error in URL hash or search params
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    if (hash.includes('error=') || search.includes('error=')) {
+      const cleanParams = new URLSearchParams(hash.replace(/^#/, '') || search);
+      const desc = cleanParams.get('error_description') || cleanParams.get('error');
+      if (desc) {
+        console.error('Google OAuth redirect error:', desc);
+        alert(`Google Sign-In error: ${desc.replace(/\+/g, ' ')}`);
+        // Clean URL to prevent repeated error alerts
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+
     // Check initial active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         const email = session.user.email;
-        if (!ALLOWED_EMAILS.includes(email)) {
+        if (!isEmailAllowed(email)) {
           supabase.auth.signOut();
-          alert('Access denied — ye account allowed nahi hai.');
+          alert(`Access denied — ye account allowed nahi hai (${email || 'unknown'}).`);
           setUser(null);
           onUserChange?.(null);
         } else {
@@ -41,9 +55,9 @@ export default function GoogleAuth({ onUserChange, compact = false }) {
       if (event === 'SIGNED_IN') {
         const email = session?.user?.email;
 
-        if (!email || !ALLOWED_EMAILS.includes(email)) {
+        if (!email || !isEmailAllowed(email)) {
           await supabase.auth.signOut();
-          alert('Access denied — ye account allowed nahi hai.');
+          alert(`Access denied — ye account allowed nahi hai (${email || 'unknown'}).`);
           setUser(null);
           onUserChange?.(null);
           return;
