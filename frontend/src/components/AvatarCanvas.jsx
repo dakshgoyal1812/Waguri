@@ -5,6 +5,7 @@ import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 // The shipped waguri.vrm is optimized with EXT_meshopt_compression; GLTFLoader
 // refuses the file unless a decoder is provided (no-op for non-meshopt models).
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import BirdLoader from './BirdLoader.jsx';
 
 const EMOTION_PRESETS = ['happy', 'angry', 'sad', 'surprised', 'relaxed', 'neutral'];
 const VISEME_PRESETS = ['aa', 'ih', 'ou', 'ee', 'oh'];
@@ -648,34 +649,7 @@ export default function AvatarCanvas({
   return (
     <div className="canvas-container" ref={mountRef}>
       {!isLoaded && !loadError && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '12px',
-            background: 'rgba(11, 9, 20, 0.85)',
-            zIndex: 10,
-          }}
-        >
-          <div
-            style={{
-              width: '44px',
-              height: '44px',
-              border: '3px solid rgba(244, 114, 182, 0.2)',
-              borderTopColor: '#f472b6',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite',
-            }}
-          />
-          <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
-          <p style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 600 }}>
-            Loading Waguri 3D Avatar... {loadProgress}%
-          </p>
-        </div>
+        <BirdLoader progress={loadProgress} />
       )}
 
       {loadError && (
