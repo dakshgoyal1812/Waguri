@@ -79,6 +79,7 @@ export default function AvatarCanvas({
   currentEmotion = 'neutral',
   audioElement = null,
   isSpeaking = false,
+  chatOpen = true,
   onModelLoaded = () => {},
 }) {
   const mountRef = useRef(null);
@@ -96,8 +97,10 @@ export default function AvatarCanvas({
   // emotions/lip-sync would never react to new props.
   const emotionRef = useRef(currentEmotion);
   const speakingRef = useRef(isSpeaking);
+  const chatOpenRef = useRef(chatOpen);
   useEffect(() => { emotionRef.current = currentEmotion; }, [currentEmotion]);
   useEffect(() => { speakingRef.current = isSpeaking; }, [isSpeaking]);
+  useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
 
   // Smoothed audio loudness (0..1) — drives the whole-body speech emphasis so she
   // doesn't just move her mouth when talking (airi-style full-body "aliveness").
@@ -204,7 +207,7 @@ export default function AvatarCanvas({
     };
   }, [audioElement]);
 
-  // Cursor eye-tracking input (mousemove), desktop only
+  // Cursor & touch eye-tracking input (mousemove + touchstart/touchmove)
   useEffect(() => {
     if (!lookState.current.enabled) return;
     const onMove = (e) => {
@@ -214,8 +217,24 @@ export default function AvatarCanvas({
       lookState.current.rawY = Math.max(-1, Math.min(1, ny));
       lookState.current.lastMoveAt = performance.now();
     };
+    const onTouch = (e) => {
+      if (e.touches && e.touches[0]) {
+        const t = e.touches[0];
+        const nx = (t.clientX / window.innerWidth) * 2 - 1;
+        const ny = (t.clientY / window.innerHeight) * 2 - 1;
+        lookState.current.rawX = Math.max(-1, Math.min(1, nx));
+        lookState.current.rawY = Math.max(-1, Math.min(1, ny));
+        lookState.current.lastMoveAt = performance.now();
+      }
+    };
     window.addEventListener('mousemove', onMove);
-    return () => window.removeEventListener('mousemove', onMove);
+    window.addEventListener('touchstart', onTouch, { passive: true });
+    window.addEventListener('touchmove', onTouch, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchstart', onTouch);
+      window.removeEventListener('touchmove', onTouch);
+    };
   }, []);
 
   // Main Three.js Scene Setup (re-runs on retryKey for the failure retry button)
@@ -228,10 +247,42 @@ export default function AvatarCanvas({
 
     const scene = new THREE.Scene();
 
-    const camera = new THREE.PerspectiveCamera(32, width / height, 0.1, 20);
-    // Frame head-to-waist so the natural arm rest pose is visible (Waguri ~1.48m).
-    camera.position.set(0, 1.28, 1.45);
-    camera.lookAt(0, 1.12, 0);
+    // Responsive camera framing for phones vs desktop
+    const getTargetCameraParams = (w, h, isChatOpen) => {
+      const isMobile = w <= 768 || (w / h) < 0.9;
+      if (!isMobile) {
+        // Desktop: centered head-to-waist framing
+        return {
+          pos: new THREE.Vector3(0, 1.28, 1.45),
+          look: new THREE.Vector3(0, 1.12, 0),
+          fov: 32,
+        };
+      }
+      if (isChatOpen) {
+        // Phone with chat bottom sheet open:
+        // Position Waguri prominently in the top ~50% open screen above the chat card
+        return {
+          pos: new THREE.Vector3(0, 1.16, 1.90),
+          look: new THREE.Vector3(0, 0.96, 0),
+          fov: 34,
+        };
+      }
+      // Phone with chat closed (full portrait view):
+      // Elegant full portrait framing head-to-waist on vertical phone screen
+      return {
+        pos: new THREE.Vector3(0, 1.20, 2.15),
+        look: new THREE.Vector3(0, 1.05, 0),
+        fov: 33,
+      };
+    };
+
+    const currentLook = new THREE.Vector3(0, 1.12, 0);
+    const initialParams = getTargetCameraParams(width, height, chatOpenRef.current);
+
+    const camera = new THREE.PerspectiveCamera(initialParams.fov, width / height, 0.1, 20);
+    camera.position.copy(initialParams.pos);
+    currentLook.copy(initialParams.look);
+    camera.lookAt(currentLook);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -349,6 +400,8 @@ export default function AvatarCanvas({
       width = container.clientWidth;
       height = container.clientHeight;
       camera.aspect = width / height;
+      const targetParams = getTargetCameraParams(width, height, chatOpenRef.current);
+      camera.fov = targetParams.fov;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
     };
@@ -364,6 +417,17 @@ export default function AvatarCanvas({
       animId = requestAnimationFrame(animate);
       const delta = clock.getDelta();
       const elapsed = clock.getElapsedTime();
+
+      // Smooth camera interpolation for responsive phone/desktop & chat toggle transitions
+      const targetParams = getTargetCameraParams(width, height, chatOpenRef.current);
+      const camLerpSpeed = Math.min(1, delta * 3.5);
+      camera.position.lerp(targetParams.pos, camLerpSpeed);
+      currentLook.lerp(targetParams.look, camLerpSpeed);
+      camera.lookAt(currentLook);
+      if (Math.abs(camera.fov - targetParams.fov) > 0.05) {
+        camera.fov += (targetParams.fov - camera.fov) * camLerpSpeed;
+        camera.updateProjectionMatrix();
+      }
 
       const vrm = vrmRef.current;
       if (vrm) {
