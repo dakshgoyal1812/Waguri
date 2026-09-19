@@ -51,7 +51,14 @@ export const supabase = isSupabaseConfigured
 export const ALLOWED_EMAILS = [
   'dakshgoyal1812@gmail.com',
   'goyaldaksh284@gmail.com',
+  'dakshgoyal1234567@gmail.com',
 ];
+
+export function isEmailAllowed(email) {
+  if (!email || typeof email !== 'string') return false;
+  const clean = email.trim().toLowerCase();
+  return ALLOWED_EMAILS.some((allowed) => allowed.trim().toLowerCase() === clean);
+}
 
 export async function signInWithGoogle() {
   if (!isSupabaseConfigured) {
