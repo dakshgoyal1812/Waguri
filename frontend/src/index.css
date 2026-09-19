@@ -724,7 +724,7 @@ body {
 @keyframes spin { 100% { transform: rotate(360deg); } }
 @keyframes pulse { 50% { transform: scale(1.25); } }
 
-/* responsive: chat card becomes a bottom sheet on small screens */
+/* responsive: chat card becomes a compact, polished bottom sheet on small screens */
 @media (max-width: 760px) {
   .chat-card {
     top: auto;
@@ -732,9 +732,31 @@ body {
     right: 10px;
     bottom: 74px;
     width: auto;
-    height: 52vh;
+    height: 48vh;
+    max-height: 420px;
+    border-radius: 20px;
   }
-  .fab-row { right: 12px; bottom: 14px; }
+  .fab-row {
+    right: 12px;
+    bottom: 14px;
+    gap: 6px;
+  }
+  .fab {
+    width: 40px;
+    height: 40px;
+  }
+  .topbar {
+    padding: 10px 14px 6px;
+  }
+  .logo {
+    font-size: 1.05rem;
+    gap: 8px;
+  }
+  .logo .logo-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 0.95rem;
+  }
 }
 
 /* PWA Install Button */

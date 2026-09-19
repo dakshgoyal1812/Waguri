@@ -465,6 +465,7 @@ export default function App() {
         currentEmotion={currentEmotion}
         audioElement={audioRef.current}
         isSpeaking={isSpeaking}
+        chatOpen={chatOpen}
       />
 
 
