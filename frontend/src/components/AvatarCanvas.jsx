@@ -326,48 +326,47 @@ export default function AvatarCanvas({
             fov: 33,
           };
         }
-        // Phone with chat closed (full-body idle view per design.md, feet near bottom third):
+        // Phone with chat closed (full portrait view):
         return {
-          pos: new THREE.Vector3(0, 0.88, 2.75),
-          look: new THREE.Vector3(0, 0.82, 0),
-          fov: 36,
+          pos: new THREE.Vector3(0, 1.20, 2.15),
+          look: new THREE.Vector3(0, 1.05, 0),
+          fov: 33,
         };
       }
 
       if (currentTier === 'tablet') {
         if (isChatOpen) {
           // Tablet with chat card on the side:
-          // Shift left (-0.20) so avatar is beautifully framed beside the card with headroom
           return {
-            pos: new THREE.Vector3(-0.20, 1.22, 1.80),
-            look: new THREE.Vector3(-0.10, 1.10, 0),
+            pos: new THREE.Vector3(-0.16, 1.22, 1.80),
+            look: new THREE.Vector3(-0.08, 1.08, 0),
             fov: 32,
           };
         }
         return {
           pos: new THREE.Vector3(0, 1.22, 1.80),
-          look: new THREE.Vector3(0, 1.10, 0),
+          look: new THREE.Vector3(0, 1.08, 0),
           fov: 32,
         };
       }
 
       // Desktop (1025px+): generous headroom, natural framing without cutting off hair or arms
       if (isChatOpen) {
-        // Shift left (-0.28) into the open viewport area away from the 420px chat card
+        // Shift left (-0.24) into the open viewport area away from the 420px chat card
         return {
-          pos: new THREE.Vector3(-0.28, 1.16, 1.92),
-          look: new THREE.Vector3(-0.16, 1.06, 0),
+          pos: new THREE.Vector3(-0.24, 1.18, 1.88),
+          look: new THREE.Vector3(-0.14, 1.08, 0),
           fov: 32,
         };
       }
       return {
-        pos: new THREE.Vector3(0, 1.16, 1.92),
-        look: new THREE.Vector3(0, 1.06, 0),
+        pos: new THREE.Vector3(0, 1.18, 1.88),
+        look: new THREE.Vector3(0, 1.08, 0),
         fov: 32,
       };
     };
 
-    const currentLook = new THREE.Vector3(0, 1.06, 0);
+    const currentLook = new THREE.Vector3(0, 1.08, 0);
     const initialParams = getTargetCameraParams(width, height, chatOpenRef.current, tierRef.current);
 
     const camera = new THREE.PerspectiveCamera(initialParams.fov, width / height, 0.1, 20);
@@ -607,15 +606,6 @@ export default function AvatarCanvas({
         camera.updateProjectionMatrix();
       }
 
-      // Smooth lighting transition between idle (bright day) and active chat (dusk/purple warmth)
-      const isChatActive = chatOpenRef.current;
-      const targetAmbientColor = isChatActive ? new THREE.Color(0xf3e8ff) : new THREE.Color(0xffffff);
-      const targetKeyColor = isChatActive ? new THREE.Color(0xffedd5) : new THREE.Color(0xfff0f5);
-      const targetFillColor = isChatActive ? new THREE.Color(0xd8b4fe) : new THREE.Color(0xe0e7ff);
-      const lightLerpSpeed = Math.min(1, delta * 2.5);
-      ambientLight.color.lerp(targetAmbientColor, lightLerpSpeed);
-      keyLight.color.lerp(targetKeyColor, lightLerpSpeed);
-      fillLight.color.lerp(targetFillColor, lightLerpSpeed);
 
       const vrm = vrmRef.current;
       if (vrm) {
