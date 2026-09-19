@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { LogOut, CheckCircle2, ShieldCheck, User } from 'lucide-react';
 import { supabase, isEmailAllowed, signInWithGoogle, signOutUser } from '../supabaseClient.js';
 
-export default function GoogleAuth({ onUserChange, compact = false }) {
+export default function GoogleAuth({ onUserChange, onLoadingChange, compact = false }) {
   const [user, setUser] = useState(null);
   const [signingIn, setSigningIn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -35,20 +35,30 @@ export default function GoogleAuth({ onUserChange, compact = false }) {
     }
 
     // Check initial active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const email = session.user.email;
-        if (!isEmailAllowed(email)) {
-          supabase.auth.signOut();
-          alert(`Access denied — ye account allowed nahi hai (${email || 'unknown'}).`);
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        if (session?.user) {
+          const email = session.user.email;
+          if (!isEmailAllowed(email)) {
+            supabase.auth.signOut();
+            alert(`Access denied — ye account allowed nahi hai (${email || 'unknown'}).`);
+            setUser(null);
+            onUserChange?.(null);
+          } else {
+            setUser(session.user);
+            onUserChange?.(session.user);
+          }
+        } else {
           setUser(null);
           onUserChange?.(null);
-        } else {
-          setUser(session.user);
-          onUserChange?.(session.user);
         }
-      }
-    });
+        onLoadingChange?.(false);
+      })
+      .catch((err) => {
+        console.warn('[auth] getSession error:', err);
+        onLoadingChange?.(false);
+      });
 
     // Supabase Auth listener with ALLOWED_EMAILS whitelist validation
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
