@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck } from 'lucide-react';
+import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sun, Moon } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import GamePanel from './components/GamePanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
 import WaveBackground from './components/WaveBackground.jsx';
+import MidnightSkyBackground from './components/MidnightSkyBackground.jsx';
 import GoogleAuth from './components/GoogleAuth.jsx';
 import AdminPortal from './components/AdminPortal.jsx';
 import { isAdminEmail } from './supabaseClient.js';
@@ -76,11 +77,12 @@ export default function App() {
     if (outcome === 'accepted') setInstallPrompt(null);
   };
 
-  // Light theme is the active and default design
+  // Theme state: supports light and dark modes
+  const [theme, setTheme] = useState(() => localStorage.getItem('waguri_theme') || 'light');
   useEffect(() => {
-    document.documentElement.dataset.theme = 'light';
-    localStorage.setItem('waguri_theme', 'light');
-  }, []);
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('waguri_theme', theme);
+  }, [theme]);
 
   const [background, setBackground] = useState(() => {
     try { return JSON.parse(localStorage.getItem('waguri_background')) || { id: 'wave', custom: '' }; }
@@ -316,9 +318,9 @@ export default function App() {
   // Full-app Authentication Gate: Private access only
   if (authLoading) {
     return (
-      <div className="auth-gate-container" data-theme="light">
+      <div className="auth-gate-container" data-theme={theme}>
         <div className="bg-layer">
-          <WaveBackground />
+          {theme === 'dark' ? <MidnightSkyBackground /> : <WaveBackground />}
         </div>
         <div className="ambient-glow" />
         <div className="auth-gate-card">
@@ -337,11 +339,18 @@ export default function App() {
 
   if (!authUser) {
     return (
-      <div className="auth-gate-container" data-theme="light">
+      <div className="auth-gate-container" data-theme={theme}>
         <div className="bg-layer">
-          {background.id === 'wave' && <WaveBackground />}
-          {background.id === 'custom' && background.custom && (
-            <div className="bg-custom" style={{ backgroundImage: `url(${background.custom})` }} />
+          {theme === 'dark' ? (
+            <MidnightSkyBackground />
+          ) : (
+            <>
+              {background.id === 'wave' && <WaveBackground />}
+              {background.id === 'midnight' && <MidnightSkyBackground />}
+              {background.id === 'custom' && background.custom && (
+                <div className="bg-custom" style={{ backgroundImage: `url(${background.custom})` }} />
+              )}
+            </>
           )}
         </div>
         <div className="ambient-glow" />
@@ -366,11 +375,17 @@ export default function App() {
   }
 
   return (
-    <div className="stage" data-theme="light">
-      {/* stage background (wave / transparent / custom) */}
+    <div className="stage" data-theme={theme}>
+      {/* stage background (wave / midnight / transparent / custom) */}
       <div className="bg-layer">
-        {background.id === 'wave' && <WaveBackground />}
-        {background.id === 'custom' && background.custom && <div className="bg-custom" style={{ backgroundImage: `url(${background.custom})` }} />}
+        {theme === 'dark' || background.id === 'midnight' ? (
+          <MidnightSkyBackground />
+        ) : (
+          <>
+            {background.id === 'wave' && <WaveBackground />}
+            {background.id === 'custom' && background.custom && <div className="bg-custom" style={{ backgroundImage: `url(${background.custom})` }} />}
+          </>
+        )}
       </div>
       <div className="ambient-glow" />
 
@@ -420,6 +435,15 @@ export default function App() {
             <span className="dot" />
             <span>{isBackendHealthy ? 'Engine Online' : 'Connecting...'}</span>
           </div>
+          <button
+            type="button"
+            className="theme-toggle-btn"
+            onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+            title={`Switch to ${theme === 'light' ? 'Dark Mode (Midnight Sky)' : 'Light Mode'}`}
+            aria-label="Toggle theme"
+          >
+            {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+          </button>
           <button
             className="icon-btn lang-btn"
             onClick={() => setVoiceLang((l) => (l === 'en-IN' ? 'hi-IN' : 'en-IN'))}
