@@ -42,6 +42,7 @@ export default function App() {
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
   const [isBackendHealthy, setIsBackendHealthy] = useState(true);
   const [authUser, setAuthUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Expressions stay lively while speaking, and gently fade back to neutral ~10s after.
   useEffect(() => {
@@ -308,6 +309,58 @@ export default function App() {
     setMessages((prev) => [...prev, msg]);
     if (msg.emotion) setCurrentEmotion(msg.emotion);
   };
+
+  // Full-app Authentication Gate: Private access only
+  if (authLoading) {
+    return (
+      <div className="auth-gate-container" data-theme="light">
+        <div className="bg-layer">
+          <WaveBackground />
+        </div>
+        <div className="ambient-glow" />
+        <div className="auth-gate-card">
+          <div className="auth-gate-avatar">🌸</div>
+          <div className="auth-gate-spinner" />
+          <h2 className="auth-gate-title">WAGURI</h2>
+          <p className="auth-gate-subtitle">Verifying Google authorization…</p>
+          {/* Silent listener checking session */}
+          <div style={{ display: 'none' }}>
+            <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return (
+      <div className="auth-gate-container" data-theme="light">
+        <div className="bg-layer">
+          {background.id === 'wave' && <WaveBackground />}
+          {background.id === 'custom' && background.custom && (
+            <div className="bg-custom" style={{ backgroundImage: `url(${background.custom})` }} />
+          )}
+        </div>
+        <div className="ambient-glow" />
+        <div className="auth-gate-card">
+          <div className="auth-gate-header">
+            <div className="auth-gate-avatar">🌸</div>
+            <h1 className="auth-gate-title">WAGURI</h1>
+            <span className="auth-gate-badge">Private Access</span>
+          </div>
+          <p className="auth-gate-subtitle">
+            Welcome to Waguri! Access is private and restricted. Please sign in with your authorized Google account to continue.
+          </p>
+          <div className="auth-gate-btn-wrapper">
+            <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} />
+          </div>
+          <div className="auth-gate-footer">
+            <span>🔒 Authorized accounts only</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="stage" data-theme="light">
