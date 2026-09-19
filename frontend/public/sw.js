@@ -1,12 +1,14 @@
-// Waguri AI Persona Companion — PWA Service Worker (v1)
-const CACHE_NAME = 'waguri-shell-v1';
+// Waguri AI Persona Companion — PWA Service Worker (v2)
+const CACHE_NAME = 'waguri-shell-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/favicon.svg',
+  '/logo.png',
+  '/favicon.ico',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-maskable-512.png',
   '/icons/apple-touch-icon.png',
 ];
 

@@ -422,7 +422,9 @@ export default function App() {
       {/* Top bar */}
       <header className="topbar">
         <div className="logo">
-          <div className="logo-avatar">🌸</div>
+          <div className="logo-avatar">
+            <img src="/logo.png" alt="Waguri Logo" className="logo-img" />
+          </div>
           <span>WAGURI</span>
         </div>
         <div className="topbar-actions">
