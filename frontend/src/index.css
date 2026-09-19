@@ -1982,5 +1982,193 @@ body {
   box-shadow: 0 0 12px rgba(168, 85, 247, 0.8);
 }
 
+/* ============================================================
+   Midnight Sky: Stars, Moon, and Shooting Meteors (Dark Mode)
+   ============================================================ */
+
+/* Dark theme tokens */
+:root[data-theme='dark'] {
+  --stage-bg: #050505;
+  --surface: rgba(15, 23, 42, 0.88);
+  --surface-solid: #0b0f19;
+  --surface-hover: rgba(167, 139, 250, 0.12);
+  --border-glass: rgba(167, 139, 250, 0.22);
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --bubble-user: #1e293b;
+  --bubble-her: rgba(30, 41, 59, 0.85);
+  --bubble-her-border: rgba(167, 139, 250, 0.3);
+  --input-bg: rgba(15, 23, 42, 0.7);
+  --shadow-card: 0 18px 50px rgba(0, 0, 0, 0.6);
+  --wave-b: rgba(15, 23, 42, 0.95);
+}
+
+.uiverse-midnight-sky {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+  overflow: hidden;
+  background-color: #050505;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* Base Sky Layer */
+.uiverse-midnight-sky .sky-canvas {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  background: #050505;
+}
+
+/* Generic star layer style */
+.uiverse-midnight-sky .stars {
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+  pointer-events: none;
+}
+
+/* Layer 1: Small fast twinkling stars - High density */
+.uiverse-midnight-sky .stars-1 {
+  background-image: radial-gradient(1px 1px at 10% 10%, #fff, transparent),
+    radial-gradient(1px 1px at 30% 20%, #fff, transparent),
+    radial-gradient(1px 1px at 50% 50%, #fff, transparent),
+    radial-gradient(1px 1px at 70% 30%, #fff, transparent),
+    radial-gradient(1px 1px at 90% 10%, #fff, transparent);
+  background-size: 200px 200px;
+  animation: twinkle 3s ease-in-out infinite;
+}
+
+/* Layer 2: Medium slower twinkling stars */
+.uiverse-midnight-sky .stars-2 {
+  background-image: radial-gradient(1.5px 1.5px at 20% 40%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 60% 85%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 85% 65%, #fff, transparent);
+  background-size: 300px 300px;
+  animation: twinkle 5s ease-in-out infinite 1s;
+}
+
+/* Layer 3: Larger, very slow twinkling stars */
+.uiverse-midnight-sky .stars-3 {
+  background-image: radial-gradient(2px 2px at 40% 70%, #fff, transparent),
+    radial-gradient(2px 2px at 10% 80%, #fff, transparent),
+    radial-gradient(2px 2px at 80% 40%, #fff, transparent);
+  background-size: 400px 400px;
+  animation: twinkle 7s ease-in-out infinite 2s;
+}
+
+/* Meteor / Shooting Star Layer */
+.uiverse-midnight-sky .meteor {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.5);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Meteor Tail */
+.uiverse-midnight-sky .meteor::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 80px;
+  height: 1px;
+  background: linear-gradient(90deg, #fff, transparent);
+}
+
+/* Meteor Instances with staggered starts */
+.uiverse-midnight-sky .m1 {
+  top: 10%;
+  left: 110%;
+  animation: shoot 8s linear infinite;
+}
+.uiverse-midnight-sky .m2 {
+  top: 30%;
+  left: 110%;
+  animation: shoot 12s linear infinite 4s;
+}
+.uiverse-midnight-sky .m3 {
+  top: 50%;
+  left: 110%;
+  animation: shoot 10s linear infinite 2s;
+}
+
+/* The Moon */
+.uiverse-midnight-sky .moon {
+  position: absolute;
+  top: 15%;
+  right: 15%;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 15px 15px 0 0 #fdfbd3;
+  filter: drop-shadow(0 0 15px rgba(253, 251, 211, 0.4));
+  z-index: 10;
+}
+
+/* Twinkle Animation */
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+/* Shooting Star Animation - Using % instead of vw/vh */
+@keyframes shoot {
+  0% {
+    transform: translateX(0) translateY(0) rotate(-35deg);
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  15% {
+    transform: translateX(-1500px) translateY(1000px) rotate(-35deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(-1500px) translateY(1000px) rotate(-35deg);
+    opacity: 0;
+  }
+}
+
+.theme-toggle-btn {
+  background: var(--surface);
+  border: 1px solid var(--border-glass);
+  color: var(--text-primary);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-toggle-btn:hover {
+  background: var(--surface-hover);
+  transform: translateY(-1px);
+}
+
+
 
 

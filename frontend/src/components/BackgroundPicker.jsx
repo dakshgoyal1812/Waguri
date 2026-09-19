@@ -4,6 +4,7 @@ import { X, ImagePlus } from 'lucide-react';
 // AIRI-style background picker: presets + custom upload, live preview, apply.
 const PRESETS = [
   { id: 'wave', name: 'Colorful Wave', desc: 'Animated wave on cross grid' },
+  { id: 'midnight', name: 'Midnight Sky', desc: 'Dark starry sky with moon & shooting meteors' },
   { id: 'transparent', name: 'Transparent', desc: 'Reveal the plain stage backdrop' },
 ];
 
@@ -32,6 +33,15 @@ export default function BackgroundPicker({ isOpen, onClose, background, onApply 
 
   const thumbFor = (id) => {
     if (id === 'wave') return <div className="cross-grid" style={{ position: 'absolute', inset: 0 }} />;
+    if (id === 'midnight') {
+      return (
+        <div style={{ position: 'absolute', inset: 0, background: '#050505', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: '15%', right: '15%', width: 18, height: 18, borderRadius: '50%', boxShadow: '3px 3px 0 0 #fdfbd3' }} />
+          <div style={{ position: 'absolute', top: '35%', left: '25%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 3px #fff' }} />
+          <div style={{ position: 'absolute', top: '65%', left: '70%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 3px #fff' }} />
+        </div>
+      );
+    }
     if (id === 'custom' && draftCustom) return <div style={{ position: 'absolute', inset: 0, background: `url(${draftCustom}) center/cover` }} />;
     return <div className="checker" style={{ position: 'relative', display: 'grid', placeItems: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>Transparent</div>;
   };
@@ -77,6 +87,14 @@ export default function BackgroundPicker({ isOpen, onClose, background, onApply 
         <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', margin: '6px 0' }}>Preview</div>
         <div style={{ height: 120, borderRadius: 12, overflow: 'hidden', position: 'relative', border: '1px solid var(--border-glass)' }}>
           {draftId === 'wave' && <div className="cross-grid" style={{ position: 'absolute', inset: 0 }} />}
+          {draftId === 'midnight' && (
+            <div style={{ position: 'absolute', inset: 0, background: '#050505', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: '15%', right: '15%', width: 28, height: 28, borderRadius: '50%', boxShadow: '6px 6px 0 0 #fdfbd3' }} />
+              <div style={{ position: 'absolute', top: '25%', left: '20%', width: 3, height: 3, background: '#fff', borderRadius: '50%', boxShadow: '0 0 5px #fff' }} />
+              <div style={{ position: 'absolute', top: '60%', left: '45%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
+              <div style={{ position: 'absolute', top: '40%', left: '80%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
+            </div>
+          )}
           {draftId === 'custom' && draftCustom && <div style={{ position: 'absolute', inset: 0, background: `url(${draftCustom}) center/cover` }} />}
           {(draftId === 'transparent') && <div className="checker" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: '0.74rem', color: 'var(--text-muted)' }}>Transparent</div>}
         </div>
