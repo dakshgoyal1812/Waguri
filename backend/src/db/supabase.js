@@ -12,6 +12,23 @@ export function createSupabaseStorage(databaseUrl) {
     async init() {
       const { rows } = await pool.query('select 1 as ok');
       if (rows[0].ok !== 1) throw new Error('Supabase health check failed');
+      try {
+        await pool.query(`
+          create table if not exists allowed_users (
+            email text primary key,
+            added_by text default 'admin',
+            created_at timestamptz not null default now()
+          );
+          insert into allowed_users (email, added_by)
+          values
+            ('dakshgoyal1234567@gmail.com', 'system'),
+            ('dakshgoyal1812@gmail.com', 'system'),
+            ('goyaldaksh284@gmail.com', 'system')
+          on conflict (email) do nothing;
+        `);
+      } catch (err) {
+        console.warn('[storage] allowed_users table ensure notice:', err.message);
+      }
     },
 
     // ---- personas ----
@@ -213,6 +230,27 @@ export function createSupabaseStorage(databaseUrl) {
         'select * from key_usage_log order by timestamp desc limit $1', [limit]
       );
       return rows;
+    },
+
+    // ---- allowed_users (auth whitelist) ----
+    async listAllowedUsers() {
+      const { rows } = await pool.query(
+        'select email, added_by, created_at from allowed_users order by created_at desc'
+      );
+      return rows;
+    },
+    async addAllowedUser(email, addedBy = 'admin') {
+      const clean = email.trim().toLowerCase();
+      await pool.query(
+        'insert into allowed_users (email, added_by) values ($1, $2) on conflict (email) do nothing',
+        [clean, addedBy]
+      );
+      return this.listAllowedUsers();
+    },
+    async removeAllowedUser(email) {
+      const clean = email.trim().toLowerCase();
+      await pool.query('delete from allowed_users where email = $1', [clean]);
+      return this.listAllowedUsers();
     },
   };
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LogOut, CheckCircle2, ShieldCheck, User } from 'lucide-react';
-import { supabase, isEmailAllowed, signInWithGoogle, signOutUser } from '../supabaseClient.js';
+import { supabase, isEmailAllowed, verifyEmailAccess, signInWithGoogle, signOutUser } from '../supabaseClient.js';
 
 export default function GoogleAuth({ onUserChange, onLoadingChange, compact = false }) {
   const [user, setUser] = useState(null);
@@ -37,11 +37,12 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
     // Check initial active session
     supabase.auth
       .getSession()
-      .then(({ data: { session } }) => {
+      .then(async ({ data: { session } }) => {
         if (session?.user) {
           const email = session.user.email;
-          if (!isEmailAllowed(email)) {
-            supabase.auth.signOut();
+          const allowed = await verifyEmailAccess(email);
+          if (!allowed) {
+            await supabase.auth.signOut();
             alert('Access Denied');
             setUser(null);
             onUserChange?.(null);
@@ -60,12 +61,13 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         onLoadingChange?.(false);
       });
 
-    // Supabase Auth listener with ALLOWED_EMAILS whitelist validation
+    // Supabase Auth listener with dynamic whitelist validation
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN') {
         const email = session?.user?.email;
+        const allowed = email ? await verifyEmailAccess(email) : false;
 
-        if (!email || !isEmailAllowed(email)) {
+        if (!email || !allowed) {
           await supabase.auth.signOut();
           alert('Access Denied');
           setUser(null);

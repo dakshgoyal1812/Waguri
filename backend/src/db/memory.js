@@ -12,6 +12,11 @@ export function createMemoryStorage() {
     memoryVectors: new Map(), // conversation_id -> [{id, content_chunk, embedding, created_at}]
     apiKeys: new Map(), // id -> key row
     usageLog: [],
+    allowedUsers: new Map([
+      ['dakshgoyal1234567@gmail.com', { email: 'dakshgoyal1234567@gmail.com', added_by: 'system', created_at: new Date().toISOString() }],
+      ['dakshgoyal1812@gmail.com', { email: 'dakshgoyal1812@gmail.com', added_by: 'system', created_at: new Date().toISOString() }],
+      ['goyaldaksh284@gmail.com', { email: 'goyaldaksh284@gmail.com', added_by: 'system', created_at: new Date().toISOString() }],
+    ]),
   };
   let seq = 0;
   const id = () => `id-${++seq}-${Math.random().toString(36).slice(2, 10)}`;
@@ -158,6 +163,22 @@ export function createMemoryStorage() {
       db.usageLog.push({ id: db.usageLog.length + 1, key_id, timestamp: now().toISOString(), status_code, latency_ms });
     },
     async getUsageLog(limit = 100) { return db.usageLog.slice(-limit).reverse().map(clone); },
+
+    // ---- allowed_users (auth whitelist) ----
+    async listAllowedUsers() {
+      return [...db.allowedUsers.values()].map(clone);
+    },
+    async addAllowedUser(email, addedBy = 'admin') {
+      const clean = email.trim().toLowerCase();
+      const row = { email: clean, added_by: addedBy, created_at: now().toISOString() };
+      db.allowedUsers.set(clean, row);
+      return [...db.allowedUsers.values()].map(clone);
+    },
+    async removeAllowedUser(email) {
+      const clean = email.trim().toLowerCase();
+      db.allowedUsers.delete(clean);
+      return [...db.allowedUsers.values()].map(clone);
+    },
 
     // test hook
     _db: db,

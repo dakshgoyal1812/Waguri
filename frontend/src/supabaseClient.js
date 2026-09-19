@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { fetchAllowedUsers } from './api.js';
 
 const supabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ||
@@ -48,16 +49,65 @@ export const supabase = isSupabaseConfigured
       },
     };
 
+export const ADMIN_EMAILS = [
+  'dakshgoyal1234567@gmail.com',
+  'dakshgoyal1812@gmail.com',
+];
+
 export const ALLOWED_EMAILS = [
   'dakshgoyal1812@gmail.com',
   'goyaldaksh284@gmail.com',
   'dakshgoyal1234567@gmail.com',
 ];
 
+export function isAdminEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  const clean = email.trim().toLowerCase();
+  return ADMIN_EMAILS.some((admin) => admin.trim().toLowerCase() === clean);
+}
+
 export function isEmailAllowed(email) {
   if (!email || typeof email !== 'string') return false;
   const clean = email.trim().toLowerCase();
+
+  // Admin emails are unconditionally allowed
+  if (isAdminEmail(clean)) return true;
+
+  // Check cached dynamic allowed users from localStorage
+  try {
+    const cached = JSON.parse(localStorage.getItem('waguri_allowed_users') || '[]');
+    if (Array.isArray(cached) && cached.some((e) => (typeof e === 'string' ? e : e.email).trim().toLowerCase() === clean)) {
+      return true;
+    }
+  } catch {
+    // ignore json error
+  }
+
+  // Check hardcoded defaults
   return ALLOWED_EMAILS.some((allowed) => allowed.trim().toLowerCase() === clean);
+}
+
+export async function verifyEmailAccess(email) {
+  if (!email || typeof email !== 'string') return false;
+  const clean = email.trim().toLowerCase();
+
+  // Admin emails are unconditionally allowed
+  if (isAdminEmail(clean)) return true;
+
+  try {
+    const data = await fetchAllowedUsers();
+    if (data?.users && Array.isArray(data.users)) {
+      const emailList = data.users.map((u) => (typeof u === 'string' ? u : u.email).trim().toLowerCase());
+      try {
+        localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
+      } catch {}
+      return emailList.includes(clean);
+    }
+  } catch (err) {
+    console.warn('[auth] Dynamic whitelist check offline, using local verification:', err.message);
+  }
+
+  return isEmailAllowed(clean);
 }
 
 export async function signInWithGoogle() {

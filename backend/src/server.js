@@ -200,6 +200,53 @@ app.post('/api/moods', requireAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Whitelist access management for Google authentication
+const ADMIN_EMAILS = [
+  'dakshgoyal1234567@gmail.com',
+  'dakshgoyal1812@gmail.com',
+];
+
+app.get('/api/admin/allowed-users', async (_req, res, next) => {
+  try {
+    const list = await storage.listAllowedUsers();
+    res.json({ ok: true, users: list, admin_emails: ADMIN_EMAILS });
+  } catch (e) { next(e); }
+});
+
+app.post('/api/admin/allowed-users', async (req, res, next) => {
+  try {
+    const { email, adminEmail } = req.body || {};
+    const adminClean = (adminEmail || '').trim().toLowerCase();
+    if (!ADMIN_EMAILS.includes(adminClean)) {
+      return res.status(403).json({ error: 'Unauthorized: only primary admins can manage access' });
+    }
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return res.status(400).json({ error: 'Valid email address is required' });
+    }
+    await storage.addAllowedUser(cleanEmail, adminClean);
+    const list = await storage.listAllowedUsers();
+    res.json({ ok: true, users: list });
+  } catch (e) { next(e); }
+});
+
+app.delete('/api/admin/allowed-users', async (req, res, next) => {
+  try {
+    const { email, adminEmail } = req.body || {};
+    const adminClean = (adminEmail || '').trim().toLowerCase();
+    if (!ADMIN_EMAILS.includes(adminClean)) {
+      return res.status(403).json({ error: 'Unauthorized: only primary admins can manage access' });
+    }
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (ADMIN_EMAILS.includes(cleanEmail)) {
+      return res.status(400).json({ error: 'Cannot remove primary admin accounts' });
+    }
+    await storage.removeAllowedUser(cleanEmail);
+    const list = await storage.listAllowedUsers();
+    res.json({ ok: true, users: list });
+  } catch (e) { next(e); }
+});
+
 // Spec route: adjust the persona/character (prompt, temperature, mood lock) from
 // Supabase-driven data without redeploying. Token-protected; merges into the
 // current character rather than requiring every field.
