@@ -241,8 +241,8 @@ app.post('/api/tts', async (req, res, next) => {
       const m = rows.find((r) => r.name === String(mood).toLowerCase());
       if (m) prosody = moodEngine.prosodyFor(m);
     }
-    const { audio } = await synthesize(text.trim(), prosody);
-    res.set('Content-Type', 'audio/mpeg');
+    const { audio, mime } = await synthesize(text.trim(), prosody);
+    res.set('Content-Type', mime);
     res.set('Cache-Control', 'no-store');
     res.send(audio);
   } catch (e) {
