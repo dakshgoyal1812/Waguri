@@ -1164,12 +1164,11 @@ body {
   width: 76px;
   height: 76px;
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, #fbcfe8 0%, #f472b6 60%, #c084fc 100%);
   display: grid;
   place-items: center;
-  box-shadow: 0 10px 30px rgba(168, 85, 247, 0.3);
-  border: 1.5px solid var(--border-glass);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(244, 114, 182, 0.45);
+  border: 2.5px solid #ffffff;
   padding: 8px;
   overflow: hidden;
 }

@@ -1,5 +1,5 @@
-// Waguri AI Persona Companion — PWA Service Worker (v2)
-const CACHE_NAME = 'waguri-shell-v2';
+// Waguri AI Persona Companion — PWA Service Worker (v3)
+const CACHE_NAME = 'waguri-shell-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
