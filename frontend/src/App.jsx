@@ -358,7 +358,9 @@ export default function App() {
         </div>
         <div className="ambient-glow" />
         <div className="auth-gate-card">
-          <div className="auth-gate-avatar">🌸</div>
+          <div className="auth-gate-avatar">
+            <img src="/logo.png" alt="Waguri Logo" className="auth-gate-logo-img" />
+          </div>
           <div className="auth-gate-spinner" />
           <h2 className="auth-gate-title">WAGURI</h2>
           <p className="auth-gate-subtitle">Verifying Google authorization…</p>
@@ -380,7 +382,9 @@ export default function App() {
         <div className="ambient-glow" />
         <div className="auth-gate-card">
           <div className="auth-gate-header">
-            <div className="auth-gate-avatar">🌸</div>
+            <div className="auth-gate-avatar">
+              <img src="/logo.png" alt="Waguri Logo" className="auth-gate-logo-img" />
+            </div>
             <h1 className="auth-gate-title">WAGURI</h1>
             <span className="auth-gate-badge">Private Access</span>
           </div>
