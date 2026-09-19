@@ -590,41 +590,54 @@ body {
 }
 
 /* ============ radial action menu (bottom-right, social-clock style) ============
-   One dark trigger; on open the ring spins 360° like a clock while five colored
+   One dark trigger; opening spins the ring 360° like a clock while five colored
    action buttons ride out along the upper-left arc (corner-safe on phones).
-   Each button carries its own --color as an "R, G, B" triplet, used for the
-   resting tint, the hover fill, and the active glow. */
+   Each button is a REAL circular <button> placed on the arc with
+   rotate(angle) translate(radius) rotate(-angle) — so its tap target is the
+   circle itself: no pseudo-element pointer-events tricks, no overlapping
+   rotated columns, works identically with mouse, touch and pen.
+   Each button carries its own --color as an "R, G, B" triplet for the resting
+   tint, the hover fill, and the active glow. */
 .social-fab {
   --size-button: 2.75rem;   /* 44px action buttons */
-  --size-padding: 0.5rem;   /* gap between the arc and the buttons */
-  --size-clock: 14rem;      /* expanded ring diameter */
+  --size-padding: 0.5rem;   /* pull the arc slightly inside the ring */
+  --size-clock: 15rem;      /* expanded ring diameter */
+  --size-trigger: var(--size-button);
+  --radius: calc(var(--size-clock) / 2 - var(--size-padding));
 
   position: absolute;
   right: 20px;
   bottom: 20px;
   z-index: 35;
-  width: var(--size-button);
-  height: var(--size-button);
+  width: var(--size-trigger);
+  height: var(--size-trigger);
 }
 
-/* Trigger: the always-visible collapsed state */
+/* Trigger: the always-visible collapsed state — light glass, app accent icon */
 .social-fab__trigger {
   position: absolute;
   inset: 0;
   z-index: 3;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--border-glass);
   border-radius: 50%;
-  background: linear-gradient(145deg, #334155, #0f172a);
-  color: #fff;
+  background: var(--surface);
+  backdrop-filter: blur(12px);
+  color: var(--accent-cyan);
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.35);
-  transition: background 0.3s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: var(--shadow-card);
+  /* kill double-tap-zoom delay and long-press selection callouts on phones */
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: background 0.3s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease;
 }
-.social-fab__trigger:hover { transform: scale(1.07); }
-.social-fab__trigger svg { fill: #fff; transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
-.social-fab.open .social-fab__trigger { background: linear-gradient(145deg, #0f172a, #020617); }
+.social-fab__trigger svg { transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+.social-fab.open .social-fab__trigger {
+  background: var(--surface-solid, var(--surface));
+  box-shadow: 0 8px 22px rgba(168, 85, 247, 0.25);
+}
 .social-fab.open .social-fab__trigger svg { transform: rotate(90deg); }
 
 /* live-mic pulse dot on the trigger — the hands-free cue survives the fold */
@@ -640,113 +653,65 @@ body {
   animation: mic-pulse 1.6s ease-in-out infinite;
 }
 
-/* Ring wrapper: collapsed it stacks every button behind the trigger; open it
-   grows to the clock size and does the signature 360° clock spin */
+/* Ring wrapper: always clock-sized; collapsed it shrinks to a dot behind the
+   trigger, open it scales up while spinning 360° (the clock animation) */
 .social-fab__list {
-  --size: calc(var(--size-button) + var(--size-padding));
-
   position: absolute;
-  left: calc(50% - var(--size) / 2);
-  top: calc(50% - var(--size) / 2);
-  width: var(--size);
-  height: var(--size);
-  border-radius: 50%;
-  transition:
-    all 0.3s ease-in-out,
-    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  left: calc(50% - var(--size-clock) / 2);
+  top: calc(50% - var(--size-clock) / 2);
+  width: var(--size-clock);
+  height: var(--size-clock);
+  transform: scale(0.12);
+  pointer-events: none;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.social-fab.open .social-fab__list,
-.social-fab:hover .social-fab__list {
-  --size: var(--size-clock);
-  transform: rotate(360deg);
+.social-fab.open .social-fab__list {
+  transform: scale(1) rotate(360deg);
 }
 
-/* Action buttons: tall columns pinned at the ring center, rotated onto the arc.
-   Angles run 270° (due left) → 360° (straight up) so every button stays inside
-   the viewport even when the trigger sits in the bottom-right corner. */
+/* Action buttons: real circles on the arc. rotate(θ) translateX(r) walks
+   clockwise from +x, so the arc runs 180° (due left) → 270° (straight up) —
+   every button stays inside the viewport even when the trigger sits in the
+   bottom-right corner. The trailing rotate(-θ) keeps icons upright. */
 .social-fab__button {
-  --angle: calc(270deg + var(--index, 0) * 22.5deg);
-  --height: calc(var(--size) - var(--size-padding) * 2);
+  --angle: calc(180deg + var(--index, 0) * 30deg);
 
   position: absolute;
   left: calc(50% - var(--size-button) / 2);
-  top: calc(50% - var(--height) / 2);
+  top: calc(50% - var(--size-button) / 2);
   width: var(--size-button);
-  height: var(--height);
-  box-sizing: content-box;
+  height: var(--size-button);
+  display: grid;
+  place-items: center;
   padding: 0;
   border: none;
-  background: none;
-  cursor: pointer;
-  pointer-events: none;
-  opacity: 0;
-  transform: rotate(var(--angle));
-  transition: opacity 0.25s ease;
-}
-.social-fab.open .social-fab__button,
-.social-fab:hover .social-fab__button {
-  pointer-events: all;
-  opacity: 1;
-}
-
-/* The visible circle sits at the top of each rotated column */
-.social-fab__button::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: calc(50% - var(--size-button) / 2);
-  width: var(--size-button);
-  height: var(--size-button);
   border-radius: 50%;
   background: rgba(var(--color), 0.55);
-  box-shadow: 0 4px 14px rgba(var(--color), 0.35);
-  transition: background 0.25s linear, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-}
-/* on desktop hover the fan turns slate, then hovering one button pours its own
-   color in from the top through an animated inset shadow (the clock fill).
-   Tap-opened (touch) fans keep their resting tints — no hover exists there. */
-.social-fab:hover .social-fab__button::before {
-  background: rgba(15, 23, 42, 0.5);
-}
-.social-fab__button::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: calc(50% - var(--size-button) / 2);
-  width: var(--size-button);
-  height: var(--size-button);
-  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   pointer-events: none;
-  box-shadow: inset 0 calc(-1 * var(--size-button)) 0 rgba(var(--color), 0);
-  transition: box-shadow 0.3s ease-in-out;
+  opacity: 0;
+  box-shadow:
+    inset 0 calc(-1 * var(--size-button)) 0 rgba(var(--color), 0),
+    0 4px 14px rgba(var(--color), 0.35);
+  transform: rotate(var(--angle)) translate(var(--radius)) rotate(calc(-1 * var(--angle)));
+  transition: opacity 0.2s ease, box-shadow 0.3s ease-in-out, scale 0.15s ease;
 }
-.social-fab__button:hover::after {
-  box-shadow: inset 0 calc(-1 * var(--size-button)) 0 rgba(var(--color), 0.95);
+.social-fab.open .social-fab__button {
+  pointer-events: auto;
+  opacity: 1;
 }
-.social-fab__button:active::before { transform: scale(0.92); }
+.social-fab__button:active { scale: 0.9; }
 
-/* toggled-on actions keep their full color even while the fan is dark */
-.social-fab.open .social-fab__button.active::before,
-.social-fab.open .social-fab__button.mic-active::before,
-.social-fab:hover .social-fab__button.active::before,
-.social-fab:hover .social-fab__button.mic-active::before {
+/* toggled-on actions keep their full color in every state */
+.social-fab.open .social-fab__button.active,
+.social-fab.open .social-fab__button.mic-active {
   background: rgba(var(--color), 0.95);
 }
 
-/* Icons counter-rotate so they stay upright on the arc */
-.social-fab__button svg {
-  position: absolute;
-  top: 0;
-  left: calc(50% - var(--size-button) / 2);
-  width: var(--size-button);
-  height: var(--size-button);
-  padding: calc(var(--size-button) * 0.28);
-  box-sizing: border-box;
-  fill: #fff;
-  color: #fff;
-  z-index: 2;
-  transform: rotate(calc(-1 * var(--angle)));
-}
+.social-fab__button svg { fill: #fff; }
 
 /* Per-action colors (R, G, B triplets for rgba()) */
 .social-fab__button.chat   { --color: 34, 184, 207; }  /* app cyan — chat panel */
@@ -760,9 +725,19 @@ body {
 .social-fab__button:nth-child(2) { --index: 1; }
 .social-fab__button:nth-child(3) { --index: 2; }
 .social-fab__button:nth-child(4) { --index: 3; }
-.social-fab__button:nth-child(5) { --index: 4; }
 
-
+/* Hover affordances are DESKTOP-ONLY polish (color fill, trigger scale).
+   Opening/closing is a click/tap toggle on every device — hover-open mixed
+   with click-toggle made the trigger feel dead (sticky hover): the pointer
+   resting on the trigger held the fan open even after the closing tap.
+   Touch and desktop alike drive the fan through the .open class and the
+   :active press feedback above. */
+@media (hover: hover) and (pointer: fine) {
+  .social-fab__button:hover {
+    background: rgba(var(--color), 0.95);
+  }
+  .social-fab__trigger:hover { transform: scale(1.07); }
+}
 
 /* ============ modals ============ */
 .modal-backdrop {
@@ -993,8 +968,9 @@ body {
     border-radius: 20px;
   }
   .social-fab {
-    --size-button: 2.5rem;  /* 40px action buttons on phones */
-    --size-clock: 11.5rem;  /* tighter arc that still clears the screen edges */
+    --size-button: 2.5rem;      /* 40px action buttons on phones */
+    --size-clock: 11.5rem;      /* tighter arc that still clears the screen edges */
+    --size-trigger: 2.75rem;    /* 44px trigger — comfortable thumb target */
     right: 12px;
     bottom: max(14px, env(safe-area-inset-bottom, 14px));
   }
@@ -1010,8 +986,19 @@ body {
   .topbar {
     top: max(8px, env(safe-area-inset-top, 8px));
     height: 44px;
-    padding: 0 14px;
+    padding: 0 12px;
   }
+  /* topbar must fit 360-430px screens: keep the brand mark and compact icon
+     chips, drop the wide text labels (full names/labels live in the menus
+     they open — user dropdown and admin portal modal) */
+  .topbar-actions { gap: 6px; }
+  .google-user-pill { padding: 5px 6px; gap: 0; }
+  .google-user-name,
+  .google-verified-icon,
+  .admin-portal-btn-text,
+  .install-pwa-btn-text { display: none; }
+  .admin-portal-topbar-btn,
+  .install-pwa-btn { padding: 8px 9px; }
   .logo {
     font-size: 1.05rem;
     gap: 8px;
@@ -1519,6 +1506,7 @@ body {
 .admin-portal-modal {
   width: min(640px, calc(100vw - 32px));
   max-height: 88vh;
+  max-height: 88dvh; /* track the mobile keyboard / safe viewport */
 }
 
 .modal-header {
