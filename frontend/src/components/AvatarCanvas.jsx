@@ -236,14 +236,16 @@ export default function AvatarCanvas({
 
   // Cursor & touch eye-tracking input (mousemove + touchstart/touchmove/touchend)
   useEffect(() => {
+    // Ensure no residual background pan remains
+    document.documentElement.style.removeProperty('--bg-pan-x');
+    document.documentElement.style.removeProperty('--bg-pan-y');
+
     const onMove = (e) => {
       const nx = (e.clientX / window.innerWidth) * 2 - 1;   // [-1, 1]
       const ny = (e.clientY / window.innerHeight) * 2 - 1;
       lookState.current.rawX = Math.max(-1, Math.min(1, nx));
       lookState.current.rawY = Math.max(-1, Math.min(1, ny));
       lookState.current.lastMoveAt = performance.now();
-      document.documentElement.style.setProperty('--bg-pan-x', `${-nx * 18}px`);
-      document.documentElement.style.setProperty('--bg-pan-y', `${-ny * 14}px`);
     };
 
     const onTouchStart = (e) => {
@@ -255,8 +257,6 @@ export default function AvatarCanvas({
         lookState.current.rawX = Math.max(-1, Math.min(1, nx));
         lookState.current.rawY = Math.max(-1, Math.min(1, ny));
         lookState.current.lastMoveAt = performance.now();
-        document.documentElement.style.setProperty('--bg-pan-x', `${-nx * 18}px`);
-        document.documentElement.style.setProperty('--bg-pan-y', `${-ny * 14}px`);
       }
     };
 
@@ -268,8 +268,6 @@ export default function AvatarCanvas({
         lookState.current.rawX = Math.max(-1, Math.min(1, nx));
         lookState.current.rawY = Math.max(-1, Math.min(1, ny));
         lookState.current.lastMoveAt = performance.now();
-        document.documentElement.style.setProperty('--bg-pan-x', `${-nx * 18}px`);
-        document.documentElement.style.setProperty('--bg-pan-y', `${-ny * 14}px`);
       }
     };
 
@@ -319,18 +317,18 @@ export default function AvatarCanvas({
       if (currentTier === 'mobile') {
         if (isChatOpen) {
           // Phone with chat bottom sheet open:
-          // Position Waguri prominently in the top ~48% open screen above the chat card
+          // Position Waguri in top ~48% open screen above the chat card
           return {
             pos: new THREE.Vector3(0, 1.25, 1.70),
             look: new THREE.Vector3(0, 1.05, 0),
             fov: 33,
           };
         }
-        // Phone with chat closed (full portrait view):
+        // Phone with chat closed (full body portrait view showing legs and shoes):
         return {
-          pos: new THREE.Vector3(0, 1.20, 2.15),
-          look: new THREE.Vector3(0, 1.05, 0),
-          fov: 33,
+          pos: new THREE.Vector3(0, 0.78, 2.85),
+          look: new THREE.Vector3(0, 0.74, 0),
+          fov: 34,
         };
       }
 
@@ -338,35 +336,35 @@ export default function AvatarCanvas({
         if (isChatOpen) {
           // Tablet with chat card on the side:
           return {
-            pos: new THREE.Vector3(-0.16, 1.22, 1.80),
-            look: new THREE.Vector3(-0.08, 1.08, 0),
-            fov: 32,
+            pos: new THREE.Vector3(-0.24, 0.78, 2.75),
+            look: new THREE.Vector3(-0.14, 0.76, 0),
+            fov: 34,
           };
         }
         return {
-          pos: new THREE.Vector3(0, 1.22, 1.80),
-          look: new THREE.Vector3(0, 1.08, 0),
-          fov: 32,
+          pos: new THREE.Vector3(0, 0.78, 2.75),
+          look: new THREE.Vector3(0, 0.76, 0),
+          fov: 34,
         };
       }
 
-      // Desktop (1025px+): generous headroom, natural framing without cutting off hair or arms
+      // Desktop (1025px+): full body framing showing head, dress, legs, socks, and shoes!
       if (isChatOpen) {
-        // Shift left (-0.24) into the open viewport area away from the 420px chat card
+        // Shift left (-0.28) into open viewport area away from the 420px chat card
         return {
-          pos: new THREE.Vector3(-0.24, 1.18, 1.88),
-          look: new THREE.Vector3(-0.14, 1.08, 0),
-          fov: 32,
+          pos: new THREE.Vector3(-0.28, 0.78, 2.75),
+          look: new THREE.Vector3(-0.16, 0.76, 0),
+          fov: 34,
         };
       }
       return {
-        pos: new THREE.Vector3(0, 1.18, 1.88),
-        look: new THREE.Vector3(0, 1.08, 0),
-        fov: 32,
+        pos: new THREE.Vector3(0, 0.78, 2.75),
+        look: new THREE.Vector3(0, 0.76, 0),
+        fov: 34,
       };
     };
 
-    const currentLook = new THREE.Vector3(0, 1.08, 0);
+    const currentLook = new THREE.Vector3(0, 0.76, 0);
     const initialParams = getTargetCameraParams(width, height, chatOpenRef.current, tierRef.current);
 
     const camera = new THREE.PerspectiveCamera(initialParams.fov, width / height, 0.1, 20);
@@ -634,14 +632,9 @@ export default function AvatarCanvas({
         look.smoothX += (targetGazeX - look.smoothX) * k;
         look.smoothY += (targetGazeY - look.smoothY) * k;
 
-        // Eyes-only tracking (≤30° H / ≤20° V)
-        const lookYaw = THREE.MathUtils.clamp(look.smoothX * 0.5, -0.52, 0.52);
-        const lookPitch = THREE.MathUtils.clamp(-look.smoothY * 0.34, -0.35, 0.35);
-
-        // On laptop/desktop: only eyes track the cursor — head stays in natural posture
-        const isDesktop = currentTier === 'desktop';
-        const headYawFromCursor = isDesktop ? 0 : lookYaw * 0.12;
-        const headPitchFromCursor = isDesktop ? 0 : lookPitch * 0.12;
+        // Eyes-only tracking (≤30° H / ≤20° V) — head never moves with cursor
+        const headYawFromCursor = 0;
+        const headPitchFromCursor = 0;
 
         // ---- eye saccades (micro darts layered on top) ----
         const sac = saccadeState.current;
