@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sun, Moon, Share2 } from 'lucide-react';
+import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
-import GamePanel from './components/GamePanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
 import WaveBackground from './components/WaveBackground.jsx';
 import MidnightSkyBackground from './components/MidnightSkyBackground.jsx';
@@ -69,12 +68,13 @@ export default function App() {
   }, [isSpeaking, isLoading]);
 
   // Modals
-  const [isGameOpen, setIsGameOpen] = useState(false);
   const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
 
   // Radial action menu (social-fab): open state + close on outside tap so the
   // fan never lingers over the stage after the user taps elsewhere (mobile).
+  // pointerdown covers mouse, touch and pen with one event — no
+  // synthesized-mouse races on phones.
   const [fabOpen, setFabOpen] = useState(false);
   const fabMenuRef = useRef(null);
   useEffect(() => {
@@ -82,12 +82,8 @@ export default function App() {
     const onOutside = (e) => {
       if (fabMenuRef.current && !fabMenuRef.current.contains(e.target)) setFabOpen(false);
     };
-    document.addEventListener('mousedown', onOutside);
-    document.addEventListener('touchstart', onOutside, { passive: true });
-    return () => {
-      document.removeEventListener('mousedown', onOutside);
-      document.removeEventListener('touchstart', onOutside);
-    };
+    document.addEventListener('pointerdown', onOutside);
+    return () => document.removeEventListener('pointerdown', onOutside);
   }, [fabOpen]);
 
   // Run a menu action, then fold the fan away — standard speed-dial behavior.
@@ -114,12 +110,8 @@ export default function App() {
     if (outcome === 'accepted') setInstallPrompt(null);
   };
 
-  // Theme state: supports light and dark modes
-  const [theme, setTheme] = useState(() => localStorage.getItem('waguri_theme') || 'light');
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem('waguri_theme', theme);
-  }, [theme]);
+  // Theme: light only — the dark-mode toggle was removed by request.
+  // (No theme state; the CSS light palette is the default.)
 
   const [background, setBackground] = useState(() => {
     try { return JSON.parse(localStorage.getItem('waguri_background')) || { id: 'wave', custom: '' }; }
@@ -345,11 +337,6 @@ export default function App() {
   // Voice input sends through the same chat path (bound after definition).
   sendRef.current = handleSendMessage;
 
-  const handleGameMessage = (msg) => {
-    setMessages((prev) => [...prev, msg]);
-    if (msg.emotion) setCurrentEmotion(msg.emotion);
-  };
-
   // Helper to render active stage or auth background
   const renderBackground = () => {
     if (background.id === 'sunset') return <SunsetBackground />;
@@ -369,13 +356,13 @@ export default function App() {
     if (background.id === 'transparent') {
       return null;
     }
-    return theme === 'dark' ? <MidnightSkyBackground /> : <PaperBackground />;
+    return <PaperBackground />;
   };
 
   // Full-app Authentication Gate: Private access only
   if (authLoading) {
     return (
-      <div className="auth-gate-container" data-theme={theme}>
+      <div className="auth-gate-container">
         <div className="bg-layer">
           {renderBackground()}
         </div>
@@ -398,7 +385,7 @@ export default function App() {
 
   if (!authUser) {
     return (
-      <div className="auth-gate-container" data-theme={theme}>
+      <div className="auth-gate-container">
         <div className="bg-layer">
           {renderBackground()}
         </div>
@@ -426,7 +413,7 @@ export default function App() {
   }
 
   return (
-    <div className="stage" data-theme={theme}>
+    <div className="stage">
       {/* stage background (sunset / paper / wave / midnight / transparent / custom) */}
       <div className="bg-layer">
         {renderBackground()}
@@ -452,7 +439,7 @@ export default function App() {
           <div className="logo-avatar">
             <img src="/logo.png" alt="Waguri Logo" className="logo-img" />
           </div>
-          <span>WAGURI</span>
+          <span className="logo-text">WAGURI</span>
         </div>
         <div className="topbar-actions">
           <GoogleAuth onUserChange={setAuthUser} compact />
@@ -465,7 +452,7 @@ export default function App() {
               aria-label="Admin Access Portal"
             >
               <ShieldCheck size={15} />
-              <span>Admin Portal</span>
+              <span className="admin-portal-btn-text">Admin Portal</span>
             </button>
           )}
           {installPrompt && (
@@ -474,18 +461,9 @@ export default function App() {
               onClick={handleInstallApp}
               title="Install Waguri App on your device"
             >
-              📱 Install App
+              <span className="install-pwa-btn-text">📱 Install App</span>
             </button>
           )}
-          <button
-            type="button"
-            className="theme-toggle-btn"
-            onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-            title={`Switch to ${theme === 'light' ? 'Dark Mode (Midnight Sky)' : 'Light Mode'}`}
-            aria-label="Toggle theme"
-          >
-            {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-          </button>
         </div>
       </header>
 
@@ -555,14 +533,6 @@ export default function App() {
             {handsFree ? <Mic size={19} /> : <MicOff size={19} />}
           </button>
           <button
-            className="social-fab__button game"
-            onClick={() => handleFabAction(() => setIsGameOpen(true))}
-            title="Play a game with her"
-            aria-label="Play games"
-          >
-            <Gamepad2 size={19} />
-          </button>
-          <button
             className={`social-fab__button voice ${autoPlayAudio ? 'active' : ''}`}
             onClick={() => handleFabAction(() => setAutoPlayAudio(!autoPlayAudio))}
             title={autoPlayAudio ? 'Her voice ON' : 'Her voice MUTED'}
@@ -587,19 +557,11 @@ export default function App() {
           aria-expanded={fabOpen}
           title="Actions"
         >
-          <Share2 size={17} />
+          <Sparkles size={18} />
         </button>
       </div>
 
       {/* Modals */}
-      <GamePanel
-        isOpen={isGameOpen}
-        onClose={() => setIsGameOpen(false)}
-        conversationId={conversationId}
-        onPlayAudio={handlePlayAudio}
-        onGameMessage={handleGameMessage}
-      />
-
       <BackgroundPicker
         isOpen={isBgPickerOpen}
         onClose={() => setIsBgPickerOpen(false)}
