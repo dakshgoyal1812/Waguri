@@ -3,6 +3,7 @@ import { X, ImagePlus } from 'lucide-react';
 
 // AIRI-style background picker: presets + custom upload, live preview, apply.
 const PRESETS = [
+  { id: 'sunset', name: 'Sunset Glow', desc: 'Warm radiant sunset & twilight gradient' },
   { id: 'paper', name: 'Textured Paper', desc: 'Light geometric woven paper pattern' },
   { id: 'wave', name: 'Colorful Wave', desc: 'Animated wave on cross grid' },
   { id: 'midnight', name: 'Midnight Sky', desc: 'Dark starry sky with moon & shooting meteors' },
@@ -33,6 +34,15 @@ export default function BackgroundPicker({ isOpen, onClose, background, onApply 
   };
 
   const thumbFor = (id) => {
+    if (id === 'sunset') {
+      return (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'radial-gradient(125% 125% at -2% 101%, rgba(245, 87, 2, 1) 10.5%, rgba(245, 120, 2, 1) 16%, rgba(245, 140, 2, 1) 17.5%, rgba(245, 170, 100, 1) 25%, rgba(238, 174, 202, 1) 40%, rgba(202, 179, 214, 1) 65%, rgba(148, 201, 233, 1) 100%)',
+        }} />
+      );
+    }
     if (id === 'paper') {
       return (
         <div style={{
@@ -47,8 +57,8 @@ export default function BackgroundPicker({ isOpen, onClose, background, onApply 
     if (id === 'midnight') {
       return (
         <div style={{ position: 'absolute', inset: 0, background: '#050505', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', top: '15%', right: '15%', width: 18, height: 18, borderRadius: '50%', boxShadow: '3px 3px 0 0 #fdfbd3' }} />
-          <div style={{ position: 'absolute', top: '35%', left: '25%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 3px #fff' }} />
+          <div style={{ position: 'absolute', top: '15%', left: '15%', width: 18, height: 18, borderRadius: '50%', boxShadow: '3px 3px 0 0 #fdfbd3' }} />
+          <div style={{ position: 'absolute', top: '35%', left: '55%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 3px #fff' }} />
           <div style={{ position: 'absolute', top: '65%', left: '70%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 3px #fff' }} />
         </div>
       );
@@ -97,6 +107,13 @@ export default function BackgroundPicker({ isOpen, onClose, background, onApply 
 
         <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', margin: '6px 0' }}>Preview</div>
         <div style={{ height: 120, borderRadius: 12, overflow: 'hidden', position: 'relative', border: '1px solid var(--border-glass)' }}>
+          {draftId === 'sunset' && (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'radial-gradient(125% 125% at -2% 101%, rgba(245, 87, 2, 1) 10.5%, rgba(245, 120, 2, 1) 16%, rgba(245, 140, 2, 1) 17.5%, rgba(245, 170, 100, 1) 25%, rgba(238, 174, 202, 1) 40%, rgba(202, 179, 214, 1) 65%, rgba(148, 201, 233, 1) 100%)',
+            }} />
+          )}
           {draftId === 'paper' && (
             <div style={{
               position: 'absolute',
@@ -108,9 +125,9 @@ export default function BackgroundPicker({ isOpen, onClose, background, onApply 
           {draftId === 'wave' && <div className="cross-grid" style={{ position: 'absolute', inset: 0 }} />}
           {draftId === 'midnight' && (
             <div style={{ position: 'absolute', inset: 0, background: '#050505', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: '15%', right: '15%', width: 28, height: 28, borderRadius: '50%', boxShadow: '6px 6px 0 0 #fdfbd3' }} />
-              <div style={{ position: 'absolute', top: '25%', left: '20%', width: 3, height: 3, background: '#fff', borderRadius: '50%', boxShadow: '0 0 5px #fff' }} />
-              <div style={{ position: 'absolute', top: '60%', left: '45%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
+              <div style={{ position: 'absolute', top: '15%', left: '15%', width: 28, height: 28, borderRadius: '50%', boxShadow: '6px 6px 0 0 #fdfbd3' }} />
+              <div style={{ position: 'absolute', top: '25%', left: '45%', width: 3, height: 3, background: '#fff', borderRadius: '50%', boxShadow: '0 0 5px #fff' }} />
+              <div style={{ position: 'absolute', top: '60%', left: '65%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
               <div style={{ position: 'absolute', top: '40%', left: '80%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
             </div>
           )}

@@ -7,6 +7,7 @@ import BackgroundPicker from './components/BackgroundPicker.jsx';
 import WaveBackground from './components/WaveBackground.jsx';
 import MidnightSkyBackground from './components/MidnightSkyBackground.jsx';
 import PaperBackground from './components/PaperBackground.jsx';
+import SunsetBackground from './components/SunsetBackground.jsx';
 import GoogleAuth from './components/GoogleAuth.jsx';
 import AdminPortal from './components/AdminPortal.jsx';
 import { isAdminEmail } from './supabaseClient.js';
@@ -326,12 +327,34 @@ export default function App() {
     if (msg.emotion) setCurrentEmotion(msg.emotion);
   };
 
+  // Helper to render active stage or auth background
+  const renderBackground = () => {
+    if (background.id === 'sunset') return <SunsetBackground />;
+    if (background.id === 'midnight') return <MidnightSkyBackground />;
+    if (background.id === 'paper') return <PaperBackground />;
+    if (background.id === 'wave') {
+      return (
+        <>
+          <PaperBackground />
+          <WaveBackground />
+        </>
+      );
+    }
+    if (background.id === 'custom' && background.custom) {
+      return <div className="bg-custom" style={{ backgroundImage: `url(${background.custom})` }} />;
+    }
+    if (background.id === 'transparent') {
+      return null;
+    }
+    return theme === 'dark' ? <MidnightSkyBackground /> : <PaperBackground />;
+  };
+
   // Full-app Authentication Gate: Private access only
   if (authLoading) {
     return (
       <div className="auth-gate-container" data-theme={theme}>
         <div className="bg-layer">
-          {theme === 'dark' ? <MidnightSkyBackground /> : <PaperBackground />}
+          {renderBackground()}
         </div>
         <div className="ambient-glow" />
         <div className="auth-gate-card">
@@ -352,18 +375,7 @@ export default function App() {
     return (
       <div className="auth-gate-container" data-theme={theme}>
         <div className="bg-layer">
-          {theme === 'dark' ? (
-            <MidnightSkyBackground />
-          ) : (
-            <>
-              <PaperBackground />
-              {background.id === 'wave' && <WaveBackground />}
-              {background.id === 'midnight' && <MidnightSkyBackground />}
-              {background.id === 'custom' && background.custom && (
-                <div className="bg-custom" style={{ backgroundImage: `url(${background.custom})` }} />
-              )}
-            </>
-          )}
+          {renderBackground()}
         </div>
         <div className="ambient-glow" />
         <div className="auth-gate-card">
@@ -388,17 +400,9 @@ export default function App() {
 
   return (
     <div className="stage" data-theme={theme}>
-      {/* stage background (paper / wave / midnight / transparent / custom) */}
+      {/* stage background (sunset / paper / wave / midnight / transparent / custom) */}
       <div className="bg-layer">
-        {theme === 'dark' || background.id === 'midnight' ? (
-          <MidnightSkyBackground />
-        ) : (
-          <>
-            <PaperBackground />
-            {background.id === 'wave' && <WaveBackground />}
-            {background.id === 'custom' && background.custom && <div className="bg-custom" style={{ backgroundImage: `url(${background.custom})` }} />}
-          </>
-        )}
+        {renderBackground()}
       </div>
       <div className="ambient-glow" />
 
