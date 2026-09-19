@@ -351,7 +351,7 @@ body {
 .audio-play-btn:hover:not(:disabled) { background: rgba(34, 184, 207, 0.15); }
 .audio-play-btn:disabled { opacity: 0.5; cursor: wait; }
 
-/* contextual thinking line (airi-style "Crafting an empathetic response…") */
+/* contextual thinking line & heart pulse animation */
 .thinking-line {
   align-self: flex-start;
   max-width: 88%;
@@ -371,6 +371,77 @@ body {
 @keyframes thinking-fade {
   0%, 100% { opacity: 0.45; }
   50% { opacity: 1; }
+}
+
+/* Chatbot heart pulse loading animation */
+.chat-heart-loading-wrapper {
+  animation: fadeIn 0.25s ease;
+}
+
+.chat-heart-loading-wrapper .thinking-text {
+  font-size: 0.74rem;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-left: 6px;
+  animation: thinking-fade 2s ease-in-out infinite;
+}
+
+.chat-heart-bubble {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  background: var(--bubble-her);
+  border: 1px solid var(--bubble-her-border);
+  min-width: 210px;
+  max-width: 250px;
+  box-shadow: 0 4px 14px rgba(224, 0, 0, 0.07);
+}
+
+.heart {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  overflow: visible;
+  display: block;
+}
+
+.heart #line {
+  fill: none;
+  stroke: #e00000;
+  stroke-width: 1.5;
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+  stroke-miterlimit: 4;
+  stroke-opacity: 1;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: dash 3s linear infinite;
+}
+
+.heart #point {
+  fill: none;
+  stroke: #f00000;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-miterlimit: 0.1;
+  stroke-opacity: 1;
+  stroke-dasharray: 0.0001, 0.9999;
+  stroke-dashoffset: 1;
+  animation: dash 3s linear infinite;
+}
+
+@keyframes dash {
+  0% {
+    stroke-dashoffset: 1;
+  }
+  80% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
 }
 
 /* input area */
