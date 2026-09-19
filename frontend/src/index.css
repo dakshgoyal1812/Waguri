@@ -1979,11 +1979,11 @@ body {
 /* Meteor / Shooting Star Layer */
 .uiverse-midnight-sky .meteor {
   position: absolute;
-  width: 2px;
-  height: 2px;
-  background: #fff;
+  width: 3px;
+  height: 3px;
+  background: #ffffff;
   border-radius: 50%;
-  box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 10px 3px #ffffff, 0 0 20px 5px rgba(186, 230, 253, 0.85);
   opacity: 0;
   pointer-events: none;
 }
@@ -1994,27 +1994,25 @@ body {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 80px;
-  height: 1px;
-  background: linear-gradient(90deg, #fff, transparent);
+  width: 140px;
+  height: 1.5px;
+  background: linear-gradient(90deg, #ffffff 0%, rgba(200, 235, 255, 0.9) 25%, rgba(186, 230, 253, 0.4) 60%, transparent 100%);
+  filter: drop-shadow(0 0 4px rgba(186, 230, 253, 0.7));
 }
 
-/* Meteor Instances with staggered starts */
-.uiverse-midnight-sky .m1 {
-  top: 10%;
-  left: 110%;
-  animation: shoot 8s linear infinite;
-}
-.uiverse-midnight-sky .m2 {
-  top: 30%;
-  left: 110%;
-  animation: shoot 12s linear infinite 4s;
-}
-.uiverse-midnight-sky .m3 {
-  top: 50%;
-  left: 110%;
-  animation: shoot 10s linear infinite 2s;
-}
+/* Meteor Instances with continuous, rich staggered starts across the sky */
+.uiverse-midnight-sky .m1  { top: 6%;  left: 105%; animation: shoot 4.5s linear infinite 0s; }
+.uiverse-midnight-sky .m2  { top: 18%; left: 100%; animation: shoot 5.2s linear infinite 1.8s; }
+.uiverse-midnight-sky .m3  { top: 32%; left: 110%; animation: shoot 4s linear infinite 0.7s; }
+.uiverse-midnight-sky .m4  { top: 12%; left: 88%;  animation: shootFast 3.4s linear infinite 2.2s; }
+.uiverse-midnight-sky .m5  { top: 46%; left: 105%; animation: shoot 5.8s linear infinite 3.5s; }
+.uiverse-midnight-sky .m6  { top: 25%; left: 95%;  animation: shoot 4.2s linear infinite 1.2s; }
+.uiverse-midnight-sky .m7  { top: 8%;  left: 80%;  animation: shootFast 3.6s linear infinite 2.8s; }
+.uiverse-midnight-sky .m8  { top: 60%; left: 110%; animation: shoot 5s linear infinite 4.1s; }
+.uiverse-midnight-sky .m9  { top: 38%; left: 100%; animation: shootFast 3.5s linear infinite 0.3s; }
+.uiverse-midnight-sky .m10 { top: 15%; left: 115%; animation: shoot 4.8s linear infinite 2.5s; }
+.uiverse-midnight-sky .m11 { top: 52%; left: 85%;  animation: shootFast 3.2s linear infinite 1.5s; }
+.uiverse-midnight-sky .m12 { top: 22%; left: 75%;  animation: shoot 4.1s linear infinite 3.8s; }
 
 /* The Moon */
 .uiverse-midnight-sky .moon {
@@ -2067,24 +2065,43 @@ body {
   }
 }
 
-/* Shooting Star Animation - Using % instead of vw/vh */
+/* Shooting Star Animations */
 @keyframes shoot {
   0% {
     transform: translateX(0) translateY(0) rotate(-35deg);
     opacity: 0;
   }
-  5% {
+  6% {
     opacity: 1;
   }
-  15% {
-    transform: translateX(-1500px) translateY(1000px) rotate(-35deg);
+  32% {
+    transform: translateX(-1600px) translateY(1100px) rotate(-35deg);
     opacity: 0;
   }
   100% {
-    transform: translateX(-1500px) translateY(1000px) rotate(-35deg);
+    transform: translateX(-1600px) translateY(1100px) rotate(-35deg);
     opacity: 0;
   }
 }
+
+@keyframes shootFast {
+  0% {
+    transform: translateX(0) translateY(0) rotate(-38deg);
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  28% {
+    transform: translateX(-1800px) translateY(1300px) rotate(-38deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(-1800px) translateY(1300px) rotate(-38deg);
+    opacity: 0;
+  }
+}
+
 
 .theme-toggle-btn {
   background: var(--surface);

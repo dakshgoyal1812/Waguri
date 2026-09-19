@@ -11,6 +11,15 @@ export default function MidnightSkyBackground() {
         <div className="meteor m1" />
         <div className="meteor m2" />
         <div className="meteor m3" />
+        <div className="meteor m4" />
+        <div className="meteor m5" />
+        <div className="meteor m6" />
+        <div className="meteor m7" />
+        <div className="meteor m8" />
+        <div className="meteor m9" />
+        <div className="meteor m10" />
+        <div className="meteor m11" />
+        <div className="meteor m12" />
 
         <div className="moon">
           <svg viewBox="0 0 100 100" className="moon-svg" xmlns="http://www.w3.org/2000/svg">
