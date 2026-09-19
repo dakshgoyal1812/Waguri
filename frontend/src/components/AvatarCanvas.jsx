@@ -216,6 +216,8 @@ export default function AvatarCanvas({
       lookState.current.rawX = Math.max(-1, Math.min(1, nx));
       lookState.current.rawY = Math.max(-1, Math.min(1, ny));
       lookState.current.lastMoveAt = performance.now();
+      document.documentElement.style.setProperty('--bg-pan-x', `${-nx * 18}px`);
+      document.documentElement.style.setProperty('--bg-pan-y', `${-ny * 14}px`);
     };
     const onTouch = (e) => {
       if (e.touches && e.touches[0]) {
@@ -225,6 +227,8 @@ export default function AvatarCanvas({
         lookState.current.rawX = Math.max(-1, Math.min(1, nx));
         lookState.current.rawY = Math.max(-1, Math.min(1, ny));
         lookState.current.lastMoveAt = performance.now();
+        document.documentElement.style.setProperty('--bg-pan-x', `${-nx * 18}px`);
+        document.documentElement.style.setProperty('--bg-pan-y', `${-ny * 14}px`);
       }
     };
     window.addEventListener('mousemove', onMove);
