@@ -110,6 +110,9 @@ body {
   padding: 14px 22px 10px;
   background: transparent;
   pointer-events: none;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 .topbar > * { pointer-events: auto; }
 
@@ -718,7 +721,7 @@ body {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background: radial-gradient(ellipse 60% 45% at 50% 60%, rgba(34, 184, 207, 0.07), transparent 70%);
+  background: radial-gradient(ellipse 60% 45% at 50% 60%, rgba(167, 139, 250, 0.05), transparent 70%);
 }
 
 @keyframes spin { 100% { transform: rotate(360deg); } }
@@ -1182,10 +1185,11 @@ body {
 }
 
 .modal-content, .modal-card {
-  background: #ffffff;
+  background: var(--surface-solid);
+  color: var(--text-primary);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-card);
-  box-shadow: 0 24px 60px rgba(18, 51, 62, 0.25);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1213,8 +1217,8 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 18px 22px;
-  border-bottom: 1px solid rgba(34, 184, 207, 0.12);
-  background: rgba(244, 251, 253, 0.7);
+  border-bottom: 1px solid var(--border-glass);
+  background: var(--surface-hover);
 }
 
 .modal-title-wrap {
@@ -2217,8 +2221,192 @@ body {
     rgba(245, 140, 2, 1) 17.5%,
     rgba(245, 170, 100, 1) 25%,
     rgba(238, 174, 202, 1) 40%,
-    rgba(202, 179, 214, 1) 65%,
-    rgba(148, 201, 233, 1) 100%
+    rgba(202, 179, 214, 1) 70%,
+    rgba(202, 179, 214, 1) 100%
   );
   pointer-events: none;
+}
+
+/* ============ Mobile-Optimized Game Modal & Board ============ */
+.game-modal-content {
+  width: min(440px, calc(100vw - 24px));
+  max-height: 90dvh;
+  border-radius: 22px;
+  background: var(--surface-solid);
+  border: 1px solid var(--border-glass);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.game-modal-body {
+  padding: 16px 18px 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Tic-tac-toe responsive grid */
+.ttt-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+  max-width: 260px;
+  aspect-ratio: 1;
+  margin: 6px auto;
+}
+
+.ttt-cell {
+  aspect-ratio: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(1.9rem, 7vw, 2.4rem);
+  font-weight: 800;
+  border-radius: 14px;
+  border: 1.5px solid var(--border-glass);
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  padding: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.ttt-cell:active:not(:disabled) {
+  transform: scale(0.92);
+  background: var(--surface-hover);
+}
+
+.ttt-cell.cell-x {
+  color: #f43f5e;
+  text-shadow: 0 0 12px rgba(244, 63, 94, 0.35);
+  background: rgba(244, 63, 94, 0.08);
+  border-color: rgba(244, 63, 94, 0.3);
+}
+
+.ttt-cell.cell-o {
+  color: #a855f7;
+  text-shadow: 0 0 12px rgba(168, 85, 247, 0.35);
+  background: rgba(168, 85, 247, 0.08);
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+.ttt-cell:disabled {
+  opacity: 1 !important;
+  cursor: default;
+}
+
+/* RPS responsive buttons */
+.rps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+  margin: 4px auto;
+}
+
+.rps-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 6px;
+  border-radius: 16px;
+  border: 1.5px solid var(--border-glass);
+  background: var(--surface);
+  color: var(--text-primary);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rps-btn:active:not(:disabled) {
+  transform: scale(0.93);
+  background: var(--surface-hover);
+}
+
+.rps-btn.active {
+  border-color: var(--accent-pink);
+  background: rgba(244, 63, 94, 0.12);
+}
+
+.rps-emoji {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.rps-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* 20 Questions choices */
+.twentyq-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+  margin: 4px auto;
+}
+
+.twentyq-btn {
+  padding: 10px 8px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border-glass);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.twentyq-btn:active:not(:disabled) {
+  transform: scale(0.93);
+}
+
+/* Waguri banter speech card */
+.game-banter-card {
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.game-thinking-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--accent-purple);
+  font-weight: 600;
+  animation: pulse 1.2s ease-in-out infinite;
 }

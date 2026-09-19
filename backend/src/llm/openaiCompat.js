@@ -21,7 +21,7 @@ function contentToText(content) {
   return '';
 }
 
-export async function chatCompletion({ baseUrl, apiKey, model, messages, timeoutMs, temperature }) {
+export async function chatCompletion({ baseUrl, apiKey, model, messages, timeoutMs, temperature, maxTokens }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const started = Date.now();
@@ -37,7 +37,12 @@ export async function chatCompletion({ baseUrl, apiKey, model, messages, timeout
         'X-Title': 'Waguri persona-twin',
       },
       // characters.base_temperature from Supabase rides in as `temperature`
-      body: JSON.stringify({ model, messages, ...(temperature !== undefined ? { temperature } : {}) }),
+      body: JSON.stringify({
+        model,
+        messages,
+        ...(temperature !== undefined ? { temperature } : {}),
+        ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+      }),
     });
     const latencyMs = Date.now() - started;
     const bodyText = await res.text();
