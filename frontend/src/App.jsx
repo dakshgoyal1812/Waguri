@@ -463,17 +463,7 @@ export default function App() {
         isSpeaking={isSpeaking}
       />
 
-      {isSpeaking && (
-        <div className="speaking-indicator">
-          <div className="sound-wave">
-            <span />
-            <span />
-            <span />
-            <span />
-          </div>
-          <span>Speaking ({currentEmotion})</span>
-        </div>
-      )}
+
 
 
 
