@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Volume2, MessageCircle, Clock, Database, Mic, MicOff } from 'lucide-react';
+import { Send, MessageCircle, Mic, MicOff } from 'lucide-react';
 
 const SUGGESTIONS = [
   'What bakery sweets do you recommend today? 🍰',
@@ -16,19 +16,6 @@ const THINKING_LINES = [
   'Feeling the mood of the moment…',
   'Remembering what matters here…',
 ];
-
-const EMOTION_EMOJIS = {
-  happy: '😊',
-  angry: '😠',
-  sad: '😔',
-  surprised: '😲',
-  relaxed: '😌',
-  neutral: '😐',
-  // mood-engine extras (from the moods table)
-  excited: '🤩',
-  curious: '🤔',
-  playful: '😜',
-};
 
 export default function ChatPanel({
   messages,
@@ -142,53 +129,14 @@ export default function ChatPanel({
 
         {messages.map((msg, idx) => {
           const isUser = msg.role === 'user';
-          const isPlayingThis = activeAudioUrl === msg.audio_url && isPlayingAudio;
-          const emotion = msg.emotion || 'neutral';
-          const emoji = EMOTION_EMOJIS[emotion] || '✨';
 
           return (
             <div key={idx} className={`message-bubble-wrapper ${isUser ? 'user' : 'assistant'}`}>
               <div className="message-meta">
                 <span>{isUser ? 'You' : persona?.name || 'Waguri'}</span>
-                {!isUser && msg.emotion && (
-                  <span className="emotion-tag">
-                    {emoji} {emotion}
-                  </span>
-                )}
-                {!isUser && msg.latency_ms && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                    <Clock size={10} /> {msg.latency_ms}ms
-                  </span>
-                )}
-                {!isUser && msg.memories_used > 0 && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: 'var(--accent-purple)' }}>
-                    <Database size={10} /> {msg.memories_used} mem
-                  </span>
-                )}
               </div>
 
               <div className="message-bubble">{msg.content}</div>
-
-              {/* Every reply can be voiced: if the stored audio URL died (backend
-                  restart), App re-synthesizes it from the message text. */}
-              {!isUser && (
-                <div className="audio-controls-row">
-                  <button
-                    className="audio-play-btn"
-                    onClick={() => {
-                      if (isPlayingThis) {
-                        onStopAudio?.();
-                      } else {
-                        onPlayAudio(msg.audio_url, msg.emotion, msg.content);
-                      }
-                    }}
-                    title={isPlayingThis ? 'Click to stop speaking' : 'Play voice audio'}
-                  >
-                    <Volume2 size={13} style={{ animation: isPlayingThis ? 'pulse 1s infinite' : 'none' }} />
-                    <span>{isPlayingThis ? 'Speaking...' : 'Play Voice'}</span>
-                  </button>
-                </div>
-              )}
             </div>
           );
         })}
