@@ -1,0 +1,296 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, ShieldAlert, UserPlus, Trash2, Mail, CheckCircle2, AlertCircle, RefreshCw, Users, ShieldCheck } from 'lucide-react';
+import { fetchAllowedUsers, addAllowedUser, removeAllowedUser } from '../api.js';
+import { ADMIN_EMAILS } from '../supabaseClient.js';
+
+export default function AdminPortal({ isOpen, onClose, adminEmail }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusMessage, setStatusMessage] = useState(null); // { type: 'success' | 'error', text: '' }
+
+  const cleanAdminEmail = (adminEmail || '').trim().toLowerCase();
+  const isAdmin = ADMIN_EMAILS.some((adm) => adm.toLowerCase() === cleanAdminEmail);
+
+  // Load allowed users whenever modal opens
+  const loadUsers = async () => {
+    setLoading(true);
+    setStatusMessage(null);
+    try {
+      const data = await fetchAllowedUsers();
+      if (data?.users) {
+        setUsers(data.users);
+        const emailList = data.users.map((u) => (typeof u === 'string' ? u : u.email).toLowerCase());
+        try {
+          localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
+        } catch {}
+      }
+    } catch (err) {
+      console.error('Failed to load allowed users:', err);
+      setStatusMessage({ type: 'error', text: `Failed to load users: ${err.message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      loadUsers();
+    }
+  }, [isOpen]);
+
+  // Handle escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  const handleAddEmail = async (e) => {
+    e.preventDefault();
+    const clean = newEmail.trim().toLowerCase();
+    if (!clean || !clean.includes('@') || !clean.includes('.')) {
+      setStatusMessage({ type: 'error', text: 'Please enter a valid email address.' });
+      return;
+    }
+
+    setSubmitting(true);
+    setStatusMessage(null);
+    try {
+      const res = await addAllowedUser(clean, cleanAdminEmail);
+      if (res?.users) {
+        setUsers(res.users);
+        const emailList = res.users.map((u) => (typeof u === 'string' ? u : u.email).toLowerCase());
+        try {
+          localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
+        } catch {}
+      }
+      setNewEmail('');
+      setStatusMessage({
+        type: 'success',
+        text: `Success! ${clean} can now sign in with Google without receiving Access Denied.`,
+      });
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err.message || 'Failed to add user.' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRemoveEmail = async (userToRemove) => {
+    const emailStr = typeof userToRemove === 'string' ? userToRemove : userToRemove.email;
+    const clean = emailStr.trim().toLowerCase();
+
+    if (ADMIN_EMAILS.some((adm) => adm.toLowerCase() === clean)) {
+      setStatusMessage({ type: 'error', text: 'Primary admin accounts cannot be removed.' });
+      return;
+    }
+
+    const confirmRemove = window.confirm(
+      `Are you sure you want to remove "${clean}"? They will no longer be able to access Waguri and will receive "Access Denied".`
+    );
+    if (!confirmRemove) return;
+
+    setLoading(true);
+    setStatusMessage(null);
+    try {
+      const res = await removeAllowedUser(clean, cleanAdminEmail);
+      if (res?.users) {
+        setUsers(res.users);
+        const emailList = res.users.map((u) => (typeof u === 'string' ? u : u.email).toLowerCase());
+        try {
+          localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
+        } catch {}
+      }
+      setStatusMessage({
+        type: 'success',
+        text: `Removed ${clean}. Their access has been revoked.`,
+      });
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err.message || 'Failed to remove user.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) => {
+      const email = (typeof u === 'string' ? u : u.email).toLowerCase();
+      return email.includes(search.trim().toLowerCase());
+    });
+  }, [users, search]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="modal-card admin-portal-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-labelledby="admin-portal-title"
+      >
+        {/* Header */}
+        <div className="modal-header">
+          <div className="modal-title-wrap">
+            <div className="admin-portal-icon-badge">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <h3 id="admin-portal-title" className="modal-title">Admin Access Portal</h3>
+              <p className="admin-portal-subtitle">
+                Manage allowed Google accounts • Logged in as: <strong>{cleanAdminEmail}</strong>
+              </p>
+            </div>
+          </div>
+          <button className="icon-btn modal-close-btn" onClick={onClose} aria-label="Close admin portal">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Status Alerts */}
+        {statusMessage && (
+          <div className={`admin-status-banner ${statusMessage.type}`}>
+            {statusMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            <span>{statusMessage.text}</span>
+          </div>
+        )}
+
+        {/* Add Email Form */}
+        <div className="admin-add-section">
+          <label className="admin-section-label" htmlFor="new-user-email">
+            Grant Google Login Access
+          </label>
+          <form onSubmit={handleAddEmail} className="admin-add-form">
+            <div className="admin-input-wrapper">
+              <Mail size={16} className="admin-input-icon" />
+              <input
+                id="new-user-email"
+                type="email"
+                placeholder="Enter user's Google email (e.g. friend@gmail.com)"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                className="admin-input"
+                disabled={submitting}
+                autoFocus
+              />
+            </div>
+            <button
+              type="submit"
+              className="admin-add-btn"
+              disabled={submitting || !newEmail.trim()}
+            >
+              {submitting ? (
+                <RefreshCw size={15} className="spin-icon" />
+              ) : (
+                <UserPlus size={15} />
+              )}
+              <span>{submitting ? 'Adding...' : 'Allow Access'}</span>
+            </button>
+          </form>
+          <p className="admin-help-text">
+            💡 When you add someone's email, they will be permitted to sign in with Google without encountering "Access Denied".
+          </p>
+        </div>
+
+        {/* Whitelist List Section */}
+        <div className="admin-list-section">
+          <div className="admin-list-header">
+            <div className="admin-list-title">
+              <Users size={16} />
+              <span>Allowed Users ({users.length})</span>
+            </div>
+            <div className="admin-list-tools">
+              <input
+                type="text"
+                placeholder="Search email..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="admin-search-input"
+              />
+              <button
+                type="button"
+                className="icon-btn admin-refresh-btn"
+                onClick={loadUsers}
+                disabled={loading}
+                title="Refresh whitelist"
+              >
+                <RefreshCw size={14} className={loading ? 'spin-icon' : ''} />
+              </button>
+            </div>
+          </div>
+
+          <div className="admin-users-scroll">
+            {loading && users.length === 0 ? (
+              <div className="admin-empty-state">Loading allowed users list...</div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="admin-empty-state">
+                {search ? `No accounts match "${search}"` : 'No users in allowed list.'}
+              </div>
+            ) : (
+              <ul className="admin-users-list">
+                {filteredUsers.map((item) => {
+                  const email = (typeof item === 'string' ? item : item.email).toLowerCase();
+                  const isPrimaryAdmin = ADMIN_EMAILS.some((adm) => adm.toLowerCase() === email);
+                  const addedBy = item.added_by || 'admin';
+                  const dateStr = item.created_at ? new Date(item.created_at).toLocaleDateString() : '';
+
+                  return (
+                    <li key={email} className={`admin-user-item ${isPrimaryAdmin ? 'is-admin' : ''}`}>
+                      <div className="admin-user-info">
+                        <div className="admin-user-avatar">
+                          {email.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="admin-user-details">
+                          <span className="admin-user-email">{email}</span>
+                          <span className="admin-user-meta">
+                            {isPrimaryAdmin ? 'Permanent Primary Administrator' : `Added by: ${addedBy}${dateStr ? ` on ${dateStr}` : ''}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="admin-user-actions">
+                        {isPrimaryAdmin ? (
+                          <span className="admin-badge-protected" title="Admin account cannot be removed">
+                            <ShieldCheck size={13} />
+                            <span>Primary Admin</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="admin-remove-btn"
+                            onClick={() => handleRemoveEmail(item)}
+                            title={`Revoke access for ${email}`}
+                          >
+                            <Trash2 size={14} />
+                            <span>Remove</span>
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="modal-footer admin-portal-footer">
+          <span className="admin-footer-security">
+            🔒 Changes take effect immediately across all devices & Google Auth sessions.
+          </span>
+          <button className="btn btn-secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

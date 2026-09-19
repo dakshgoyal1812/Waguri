@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, ImageIcon } from 'lucide-react';
+import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import GamePanel from './components/GamePanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
 import WaveBackground from './components/WaveBackground.jsx';
 import GoogleAuth from './components/GoogleAuth.jsx';
+import AdminPortal from './components/AdminPortal.jsx';
+import { isAdminEmail } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 
@@ -54,6 +56,7 @@ export default function App() {
   // Modals
   const [isGameOpen, setIsGameOpen] = useState(false);
   const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
+  const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
 
   // PWA install prompt handler
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -392,6 +395,18 @@ export default function App() {
         </div>
         <div className="topbar-actions">
           <GoogleAuth onUserChange={setAuthUser} compact />
+          {isAdminEmail(authUser?.email) && (
+            <button
+              type="button"
+              className="admin-portal-topbar-btn"
+              onClick={() => setIsAdminPortalOpen(true)}
+              title="Open Admin Access Portal to manage whitelist"
+              aria-label="Admin Access Portal"
+            >
+              <ShieldCheck size={15} />
+              <span>Admin Portal</span>
+            </button>
+          )}
           {installPrompt && (
             <button
               className="install-pwa-btn"
@@ -539,6 +554,12 @@ export default function App() {
         onClose={() => setIsBgPickerOpen(false)}
         background={background}
         onApply={setBackground}
+      />
+
+      <AdminPortal
+        isOpen={isAdminPortalOpen}
+        onClose={() => setIsAdminPortalOpen(false)}
+        adminEmail={authUser?.email}
       />
     </div>
   );

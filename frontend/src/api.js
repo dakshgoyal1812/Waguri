@@ -130,3 +130,28 @@ export async function checkBackendHealth() {
     return { ok: false };
   }
 }
+
+// Admin access whitelist management
+export async function fetchAllowedUsers() {
+  const res = await fetch(`${BASE_URL}/api/admin/allowed-users`);
+  return handleResponse(res);
+}
+
+export async function addAllowedUser(email, adminEmail) {
+  const res = await fetch(`${BASE_URL}/api/admin/allowed-users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, adminEmail }),
+  });
+  return handleResponse(res);
+}
+
+export async function removeAllowedUser(email, adminEmail) {
+  const res = await fetch(`${BASE_URL}/api/admin/allowed-users`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, adminEmail }),
+  });
+  return handleResponse(res);
+}
+
