@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { Volume2, VolumeX, Gamepad2, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sun, Moon, Settings, Phone, Video, X } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import GamePanel from './components/GamePanel.jsx';
@@ -72,6 +72,7 @@ export default function App() {
   const [isGameOpen, setIsGameOpen] = useState(false);
   const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // PWA install prompt handler
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -404,9 +405,10 @@ export default function App() {
 
   return (
     <div className="stage" data-theme={theme}>
-      {/* stage background (sunset / paper / wave / midnight / transparent / custom) */}
+      {/* 1. Background Environment Layer with dusk/indoor cross-fade */}
       <div className="bg-layer">
         {renderBackground()}
+        <div className={`active-chat-backdrop ${chatOpen ? 'active' : ''}`} />
       </div>
       <div className="ambient-glow" />
 
@@ -423,50 +425,7 @@ export default function App() {
         }}
       />
 
-      {/* Top bar */}
-      <header className="topbar">
-        <div className="logo">
-          <div className="logo-avatar">
-            <img src="/logo.png" alt="Waguri Logo" className="logo-img" />
-          </div>
-          <span>WAGURI</span>
-        </div>
-        <div className="topbar-actions">
-          <GoogleAuth onUserChange={setAuthUser} compact />
-          {isAdminEmail(authUser?.email) && (
-            <button
-              type="button"
-              className="admin-portal-topbar-btn"
-              onClick={() => setIsAdminPortalOpen(true)}
-              title="Open Admin Access Portal to manage whitelist"
-              aria-label="Admin Access Portal"
-            >
-              <ShieldCheck size={15} />
-              <span>Admin Portal</span>
-            </button>
-          )}
-          {installPrompt && (
-            <button
-              className="install-pwa-btn"
-              onClick={handleInstallApp}
-              title="Install Waguri App on your device"
-            >
-              📱 Install App
-            </button>
-          )}
-          <button
-            type="button"
-            className="theme-toggle-btn"
-            onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-            title={`Switch to ${theme === 'light' ? 'Dark Mode (Midnight Sky)' : 'Light Mode'}`}
-            aria-label="Toggle theme"
-          >
-            {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
-          </button>
-        </div>
-      </header>
-
-      {/* The avatar herself — full stage */}
+      {/* 2. Avatar Layer (Live 3D character always rendered live behind UI) */}
       <AvatarCanvas
         currentEmotion={currentEmotion}
         audioElement={audioRef.current}
@@ -474,12 +433,70 @@ export default function App() {
         chatOpen={chatOpen}
       />
 
+      {/* 3. UI Overlay Layer: Floating Transparent Header */}
+      <header className="replika-header">
+        <button
+          type="button"
+          className="replika-header-btn home-btn"
+          onClick={() => setChatOpen(false)}
+          title="Waguri Home"
+          aria-label="Home"
+        >
+          <img src="/logo.png" alt="Waguri" className="header-logo-icon" />
+        </button>
 
+        <div className="replika-header-center">
+          <h1 className="companion-name">{persona?.name || 'Waguri'}</h1>
+          <span className="companion-subtitle">Your Friend</span>
+        </div>
 
+        <div className="replika-header-right">
+          {!chatOpen ? (
+            <button
+              type="button"
+              className="replika-header-btn settings-btn"
+              onClick={() => setIsSettingsOpen(true)}
+              title="Settings & Personalization"
+              aria-label="Settings"
+            >
+              <Settings size={20} />
+            </button>
+          ) : (
+            <div className="active-header-cluster">
+              <button
+                type="button"
+                className={`replika-header-btn call-cluster-btn ${handsFree ? 'active' : ''} ${voice.isSpeaking ? 'speaking' : ''}`}
+                onClick={toggleMic}
+                title={handsFree ? 'Mute call' : 'Start voice call'}
+                aria-label="Voice call"
+              >
+                <Phone size={17} />
+              </button>
+              <button
+                type="button"
+                className="replika-header-btn game-cluster-btn"
+                onClick={() => setIsGameOpen(true)}
+                title="Play Games"
+                aria-label="Play games"
+              >
+                <Video size={17} />
+              </button>
+              <button
+                type="button"
+                className="replika-header-btn close-cluster-btn"
+                onClick={() => setChatOpen(false)}
+                title="Minimize chat"
+                aria-label="Close chat"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
 
-
-      {/* floating chat card */}
-      <aside className={`chat-card ${chatOpen ? 'open' : ''}`}>
+      {/* Floating Chat Overlay */}
+      <aside className={`replika-chat-card ${chatOpen ? 'open' : ''}`}>
         <ChatPanel
           messages={messages}
           onSendMessage={handleSendMessage}
@@ -502,57 +519,110 @@ export default function App() {
         />
       </aside>
 
-      {/* round action buttons (bottom-right, airi-style) */}
-      <div className="fab-row">
-        <button
-          className={`fab ${chatOpen ? 'active' : ''}`}
-          onClick={() => setChatOpen((o) => !o)}
-          title={chatOpen ? 'Hide chat' : 'Show chat'}
-          aria-label="Toggle chat panel"
-        >
-          <MessageCircle size={19} />
-        </button>
-        <button
-          className={`fab ${handsFree ? 'mic-active' : ''} ${voice.isSpeaking ? 'speaking' : ''}`}
-          onClick={toggleMic}
-          title={
-            voice.voiceError
-              ? `${voice.voiceError} (click to retry)`
-              : handsFree
-              ? voice.isSpeaking
-                ? 'Hearing your voice…'
-                : 'Hands-free voice ON — speak anytime (click to mute)'
-              : 'Enable hands-free voice'
-          }
-          aria-label="Toggle hands-free voice"
-        >
-          {handsFree ? <Mic size={19} /> : <MicOff size={19} />}
-        </button>
-        <button
-          className="fab"
-          onClick={() => setIsGameOpen(true)}
-          title="Play a game with her"
-          aria-label="Play games"
-        >
-          <Gamepad2 size={19} />
-        </button>
-        <button
-          className={`fab ${autoPlayAudio ? 'active' : ''}`}
-          onClick={() => setAutoPlayAudio(!autoPlayAudio)}
-          title={autoPlayAudio ? 'Her voice ON' : 'Her voice MUTED'}
-          aria-label="Toggle voice auto-play"
-        >
-          {autoPlayAudio ? <Volume2 size={19} /> : <VolumeX size={19} />}
-        </button>
-        <button
-          className="fab"
-          onClick={() => setIsBgPickerOpen(true)}
-          title="Stage background"
-          aria-label="Stage background"
-        >
-          <ImageIcon size={19} />
-        </button>
-      </div>
+      {/* Floating quick chat trigger (when chat is minimized in idle view) */}
+      {!chatOpen && (
+        <div className="idle-input-trigger-container">
+          <button
+            type="button"
+            className="idle-pill-trigger"
+            onClick={() => setChatOpen(true)}
+            title="Chat with Waguri"
+          >
+            <Phone size={18} className="idle-trigger-icon" />
+            <span className="idle-trigger-placeholder">Talk to me</span>
+            <MessageCircle size={18} className="idle-trigger-chat-icon" />
+          </button>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div className="modal-backdrop" onClick={() => setIsSettingsOpen(false)}>
+          <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="settings-modal-header">
+              <h3>Settings & Personalization</h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setIsSettingsOpen(false)}
+                aria-label="Close settings"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="settings-modal-body">
+              <div className="settings-row">
+                <span>Account</span>
+                <GoogleAuth onUserChange={setAuthUser} compact />
+              </div>
+              {isAdminEmail(authUser?.email) && (
+                <div className="settings-row">
+                  <span>Administration</span>
+                  <button
+                    type="button"
+                    className="settings-action-btn"
+                    onClick={() => {
+                      setIsSettingsOpen(false);
+                      setIsAdminPortalOpen(true);
+                    }}
+                  >
+                    <ShieldCheck size={16} />
+                    <span>Admin Portal</span>
+                  </button>
+                </div>
+              )}
+              <div className="settings-row">
+                <span>Theme</span>
+                <button
+                  type="button"
+                  className="settings-action-btn"
+                  onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+                >
+                  {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+                  <span>{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>
+                </button>
+              </div>
+              <div className="settings-row">
+                <span>Stage Background</span>
+                <button
+                  type="button"
+                  className="settings-action-btn"
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    setIsBgPickerOpen(true);
+                  }}
+                >
+                  <ImageIcon size={16} />
+                  <span>Change Background</span>
+                </button>
+              </div>
+              <div className="settings-row">
+                <span>Auto-play Voice</span>
+                <button
+                  type="button"
+                  className={`settings-action-btn ${autoPlayAudio ? 'active' : ''}`}
+                  onClick={() => setAutoPlayAudio(!autoPlayAudio)}
+                >
+                  {autoPlayAudio ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                  <span>{autoPlayAudio ? 'Voice Enabled' : 'Voice Muted'}</span>
+                </button>
+              </div>
+              {installPrompt && (
+                <div className="settings-row">
+                  <span>App Installation</span>
+                  <button
+                    type="button"
+                    className="settings-action-btn install"
+                    onClick={handleInstallApp}
+                  >
+                    📱 <span>Install PWA App</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       <GamePanel
