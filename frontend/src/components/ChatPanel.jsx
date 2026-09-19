@@ -90,7 +90,9 @@ export default function ChatPanel({
       {/* Header */}
       <div className="chat-header">
         <div className="persona-mini-card">
-          <div className="persona-avatar-sm">W</div>
+          <div className="persona-avatar-sm">
+            <img src="/logo.png" alt="Waguri" className="persona-avatar-img" />
+          </div>
           <div className="persona-meta">
             <h2>{persona?.name || 'Waguri'}</h2>
           </div>
@@ -142,7 +144,7 @@ export default function ChatPanel({
           const isUser = msg.role === 'user';
           const isPlayingThis = activeAudioUrl === msg.audio_url && isPlayingAudio;
           const emotion = msg.emotion || 'neutral';
-          const emoji = EMOTION_EMOJIS[emotion] || '🌸';
+          const emoji = EMOTION_EMOJIS[emotion] || '✨';
 
           return (
             <div key={idx} className={`message-bubble-wrapper ${isUser ? 'user' : 'assistant'}`}>

@@ -198,7 +198,7 @@ export default function GamePanel({
           {/* Waguri speech / banter card */}
           {lastLine && (
             <div className="game-banter-card">
-              <span style={{ fontSize: '1.15rem', lineHeight: 1 }}>🌸</span>
+              <img src="/logo.png" alt="Waguri" className="game-banter-avatar" />
               <div style={{ flex: 1 }}>
                 <strong style={{ color: 'var(--accent-purple)', marginRight: '6px' }}>Waguri:</strong>
                 <span>{lastLine.text}</span>
