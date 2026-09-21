@@ -81,6 +81,7 @@ export default function ChatPanel({
     <div className="chat-section">
       {/* Messages Stream */}
       <div className="chat-messages" ref={messagesListRef}>
+        <div className="chat-spacer" />
         {messages.length === 0 && (
           <div className="chat-empty-hint">
             <p>Say hello to Waguri ✨</p>
