@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles } from 'lucide-react';
+import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
+import VRMPicker from './components/VRMPicker.jsx';
 import WaveBackground from './components/WaveBackground.jsx';
 import MidnightSkyBackground from './components/MidnightSkyBackground.jsx';
 import PaperBackground from './components/PaperBackground.jsx';
@@ -12,6 +13,7 @@ import AdminPortal from './components/AdminPortal.jsx';
 import { isAdminEmail } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
+import { BUNDLED_AVATARS, DEFAULT_VRM_URL, getCustomVrmBlob } from './lib/vrmStore.js';
 
 // Natural emotion cycle pool for automatic, subtle idle expression transitions
 const IDLE_EMOTION_POOL = ['relaxed', 'happy', 'neutral', 'curious', 'relaxed', 'happy'];
@@ -70,6 +72,44 @@ export default function App() {
   // Modals
   const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
+  const [isVrmPickerOpen, setIsVrmPickerOpen] = useState(false);
+
+  // Active avatar (VRM). The id persists; bundled ids resolve to /public URLs,
+  // custom ids to IndexedDB blobs served via object URLs.
+  const [activeVrmId, setActiveVrmId] = useState(
+    () => localStorage.getItem('waguri_active_vrm') || 'waguri'
+  );
+  useEffect(() => {
+    try { localStorage.setItem('waguri_active_vrm', activeVrmId); } catch { /* private mode */ }
+  }, [activeVrmId]);
+
+  const [vrmUrl, setVrmUrl] = useState(DEFAULT_VRM_URL);
+  // Object URLs are cached per avatar id so switching back is instant; they
+  // live for the whole session (blobs stay in IndexedDB across sessions).
+  const vrmObjectUrlsRef = useRef(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    const bundled = BUNDLED_AVATARS.find((a) => a.id === activeVrmId);
+    if (bundled) {
+      setVrmUrl(bundled.url);
+      return;
+    }
+    getCustomVrmBlob(activeVrmId)
+      .then((blob) => {
+        if (!blob) throw new Error('avatar not found');
+        let url = vrmObjectUrlsRef.current.get(activeVrmId);
+        if (!url) {
+          url = URL.createObjectURL(blob);
+          vrmObjectUrlsRef.current.set(activeVrmId, url);
+        }
+        if (!cancelled) setVrmUrl(url);
+      })
+      .catch((err) => {
+        console.warn('[waguri] saved avatar unavailable, using default:', err.message);
+        if (!cancelled) setActiveVrmId('waguri');
+      });
+    return () => { cancelled = true; };
+  }, [activeVrmId]);
 
   // Radial action menu (social-fab): open state + close on outside tap so the
   // fan never lingers over the stage after the user taps elsewhere (mobile).
@@ -143,6 +183,9 @@ export default function App() {
     enabled: handsFree,
     paused: isSpeaking || isLoading || !!activeAudioUrl,
     onFinalTranscript: (text) => sendRef.current?.(text),
+    // Barge-in: sustained speech while she is talking stops her voice, which
+    // unpauses the mic so the user's next words are actually captured.
+    onSpeechStart: () => { if (isSpeaking || activeAudioUrl) handleStopAudio(); },
     lang: voiceLang,
   });
 
@@ -473,6 +516,7 @@ export default function App() {
         audioElement={audioRef.current}
         isSpeaking={isSpeaking}
         chatOpen={chatOpen}
+        vrmUrl={vrmUrl}
       />
 
 
@@ -502,6 +546,19 @@ export default function App() {
           onResetVoiceError={voice.resetError}
         />
       </aside>
+
+      {/* bottom-left: add / switch VRM avatar — same stage capabilities for
+          any model (talking, emotions, gaze, blinking all carry over) */}
+      <button
+        type="button"
+        className="vrm-fab"
+        onClick={() => setIsVrmPickerOpen(true)}
+        title="Add or change VRM avatar"
+        aria-label="Add or change VRM avatar"
+      >
+        <UserRound size={19} />
+        <span className="vrm-fab__label">Avatar</span>
+      </button>
 
       {/* radial action menu (bottom-right, social-clock style):
           collapsed to one trigger; expands into a colored button fan on
@@ -567,6 +624,16 @@ export default function App() {
         onClose={() => setIsBgPickerOpen(false)}
         background={background}
         onApply={setBackground}
+      />
+
+      <VRMPicker
+        isOpen={isVrmPickerOpen}
+        onClose={() => setIsVrmPickerOpen(false)}
+        activeId={activeVrmId}
+        onSelect={(id) => {
+          setActiveVrmId(id);
+          setIsVrmPickerOpen(false);
+        }}
       />
 
       <AdminPortal
