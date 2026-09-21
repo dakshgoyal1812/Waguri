@@ -486,15 +486,6 @@ export default function App() {
       {/* Top bar */}
       <header className="topbar">
         <div className="logo">
-          <button
-            type="button"
-            className={`topbar-chat-toggle ${chatOpen ? 'active' : ''}`}
-            onClick={() => setChatOpen((prev) => !prev)}
-            title={chatOpen ? 'Hide floating chat (half-screen)' : 'Show floating chat'}
-            aria-label="Toggle floating chat"
-          >
-            <MessageCircle size={18} />
-          </button>
           <div className="logo-avatar">
             <img src="/logo.png" alt="Waguri Logo" className="logo-img" />
           </div>
