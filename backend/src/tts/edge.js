@@ -18,7 +18,7 @@ export async function edgeSynthesize(text, voice, timeoutMs, prosody = {}) {
   const tryOnce = async (targetVoice) => {
     const tts = new MsEdgeTTS();
     try {
-      await withTimeout(tts.setMetadata(targetVoice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3));
+      await withTimeout(tts.setMetadata(targetVoice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3));
       const hasProsody = prosody && (prosody.rate || prosody.pitch || prosody.volume);
       const { audioStream } = hasProsody
         ? tts.toStream(text, prosody)
