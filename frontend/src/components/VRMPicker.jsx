@@ -103,8 +103,28 @@ export default function VRMPicker({ isOpen, onClose, activeId, onSelect }) {
                 onClick={() => onSelect(a.id)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(a.id); }}
               >
-                <div className="bg-thumb vrm-thumb" style={{ background: a.bundled ? THUMB_GRADIENTS[i % THUMB_GRADIENTS.length] : THUMB_GRADIENTS[(i + 1) % THUMB_GRADIENTS.length] }}>
-                  {a.name.charAt(0).toUpperCase()}
+                <div
+                  className="bg-thumb vrm-thumb"
+                  style={{
+                    background: a.thumb
+                      ? '#2a2b36'
+                      : (a.bundled
+                          ? THUMB_GRADIENTS[i % THUMB_GRADIENTS.length]
+                          : THUMB_GRADIENTS[(i + 1) % THUMB_GRADIENTS.length]),
+                  }}
+                >
+                  {a.thumb ? (
+                    <img
+                      src={a.thumb}
+                      alt={a.name}
+                      className="vrm-thumb-img"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="vrm-thumb-placeholder">
+                      <UserRound size={30} />
+                    </div>
+                  )}
                 </div>
                 <span className="bg-name">{a.name}</span>
                 <span className="bg-desc">{a.bundled ? a.desc : formatSize(a.size)}</span>

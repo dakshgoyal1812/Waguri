@@ -8,11 +8,58 @@ const DB_VERSION = 1;
 const STORE = 'vrms';
 
 export const BUNDLED_AVATARS = [
-  { id: 'waguri', name: 'Waguri', url: '/waguri.vrm', desc: 'Default companion' },
-  { id: 'zero', name: 'Zero', url: '/Zero.vrm', desc: 'Bundled VRoid avatar' },
+  { id: 'waguri', name: 'Waguri', url: '/waguri.vrm', desc: 'Default companion', thumb: '/avatars/waguri.png' },
+  { id: 'zero', name: 'Zero', url: '/Zero.vrm', desc: 'Bundled VRoid avatar', thumb: '/avatars/zero.png' },
 ];
 
 export const DEFAULT_VRM_URL = '/waguri.vrm';
+
+// Extracts embedded thumbnail image from a VRM (glTF binary) file
+async function extractVrmThumbnail(file) {
+  try {
+    const headerBuffer = await file.slice(0, 12).arrayBuffer();
+    const header = new DataView(headerBuffer);
+    const magic = header.getUint32(0, true);
+    if (magic !== 0x46546c67) return null; // 'glTF'
+
+    const chunk0HeaderBuffer = await file.slice(12, 20).arrayBuffer();
+    const chunk0Header = new DataView(chunk0HeaderBuffer);
+    const jsonLen = chunk0Header.getUint32(0, true);
+
+    const jsonBuffer = await file.slice(20, 20 + jsonLen).arrayBuffer();
+    const jsonStr = new TextDecoder('utf-8').decode(jsonBuffer);
+    const gltf = JSON.parse(jsonStr);
+
+    let imgIdx = gltf.extensions?.VRMC_vrm?.meta?.thumbnailImage;
+    if (imgIdx === undefined) {
+      const texIdx = gltf.extensions?.VRM?.meta?.texture;
+      if (texIdx !== undefined && gltf.textures?.[texIdx]) {
+        imgIdx = gltf.textures[texIdx].source;
+      }
+    }
+    if (imgIdx === undefined || !gltf.images?.[imgIdx]) return null;
+
+    const imgInfo = gltf.images[imgIdx];
+    const mime = imgInfo.mimeType || 'image/png';
+    const bv = gltf.bufferViews?.[imgInfo.bufferView];
+    if (!bv) return null;
+
+    const binOffset = 20 + jsonLen + 8;
+    const byteOffset = bv.byteOffset || 0;
+    const byteLength = bv.byteLength;
+
+    const imgBlob = file.slice(binOffset + byteOffset, binOffset + byteOffset + byteLength, mime);
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(imgBlob);
+    });
+  } catch (err) {
+    console.warn('[waguri] Could not extract thumbnail from VRM:', err);
+    return null;
+  }
+}
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -44,10 +91,12 @@ export async function listCustomVrms() {
 
 export async function saveCustomVrm(file) {
   const db = await openDb();
+  const thumb = await extractVrmThumbnail(file);
   const meta = {
     id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: file.name.replace(/\.vrm$/i, ''),
     size: file.size,
+    thumb: thumb || null,
     addedAt: Date.now(),
   };
   await new Promise((resolve, reject) => {

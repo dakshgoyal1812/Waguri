@@ -776,11 +776,32 @@ body {
 .vrm-fab:active { transform: scale(0.96); }
 
 /* avatar option extras inside the (reused) background-picker modal */
-.vrm-thumb {
-  font-size: 1.7rem;
-  font-weight: 800;
+.bg-option .vrm-thumb {
+  height: 95px;
+  position: relative;
+  overflow: hidden;
+  background: #1e1e24;
+}
+.vrm-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+  display: block;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.vrm-option:hover .vrm-thumb-img {
+  transform: scale(1.08);
+}
+.vrm-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
   color: #fff;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 .vrm-option { position: relative; }
 .vrm-active-badge {
@@ -792,12 +813,15 @@ body {
   gap: 3px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(139, 92, 246, 0.92);
+  background: rgba(139, 92, 246, 0.95);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   color: #fff;
   font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0.02em;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  z-index: 2;
 }
 .vrm-delete {
   position: absolute;
@@ -810,12 +834,18 @@ body {
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   color: #fff;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, transform 0.2s ease;
+  z-index: 2;
 }
-.vrm-delete:hover { background: rgba(239, 68, 68, 0.9); }
+.vrm-delete:hover {
+  background: rgba(239, 68, 68, 0.95);
+  transform: scale(1.08);
+}
 
 /* ============ modals ============ */
 .modal-backdrop {
@@ -1113,6 +1143,9 @@ body {
   }
   .bg-option .bg-thumb {
     height: 70px;
+  }
+  .bg-option .vrm-thumb {
+    height: 85px;
   }
 }
 
