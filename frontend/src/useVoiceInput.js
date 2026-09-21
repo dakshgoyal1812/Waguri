@@ -504,7 +504,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     }
   }, [webSpeechSupported, destroyRecognition, startFallbackRecording, dispatchTranscript]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(() => {
     if (!supported) return;
     setVoiceError(null);
     wantListeningRef.current = true;
@@ -520,14 +520,15 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       }
     }
 
-    // Acquire audio stream & start volume meter
-    await startAudioCapture();
-
-    // Start recognition engine
     if (useFallbackRef.current) {
       startFallbackRecording();
     } else {
+      // Web Speech API MUST be started synchronously to inherit the user gesture token on iOS/PWAs
       startRecognition();
+      // Fire visual volume meter capture in parallel, provided we didn't instantly fallback
+      if (!useFallbackRef.current) {
+        startAudioCapture().catch(() => {});
+      }
     }
   }, [supported, startAudioCapture, startRecognition, startFallbackRecording]);
 
