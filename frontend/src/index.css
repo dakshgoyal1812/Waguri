@@ -138,34 +138,6 @@ body {
   user-select: none;
 }
 
-.topbar-chat-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: #0284c7;
-  cursor: pointer;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  margin-right: 4px;
-  flex-shrink: 0;
-}
-.topbar-chat-toggle:hover {
-  background: rgba(255, 255, 255, 0.98);
-  transform: scale(1.06);
-  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.2);
-}
-.topbar-chat-toggle.active {
-  background: rgba(235, 248, 255, 0.92);
-  border-color: rgba(34, 184, 207, 0.55);
-  color: #0284c7;
-}
 .logo .logo-avatar {
   width: 36px;
   height: 36px;
@@ -1220,11 +1192,6 @@ body {
   }
   .chat-messages {
     padding: 16px 14px 8px;
-  }
-  .topbar-chat-toggle {
-    width: 32px;
-    height: 32px;
-    margin-right: 4px;
   }
   .social-fab {
     --size-button: 2.5rem;      /* 40px action buttons on phones */
