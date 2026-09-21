@@ -15,6 +15,40 @@ const MIN_TRANSCRIPT_LEN = 2;
 const BARGE_IN_THRESHOLD = 48; // Loud enough to distinguish real user voice from speaker bleed
 const BARGE_IN_SUSTAIN_MS = 550; // Sustained speech burst needed to trigger interruption
 
+// Strips duplicated text when speech engine repeats utterances (e.g. "hello hello" -> "hello")
+function cleanDuplicateTranscript(text) {
+  if (!text) return '';
+  const trimmed = text.trim();
+  const words = trimmed.split(/\s+/);
+
+  // 1. Half of words repeated identically: "how are you how are you" -> "how are you"
+  if (words.length >= 4 && words.length % 2 === 0) {
+    const half = words.length / 2;
+    const firstHalf = words.slice(0, half).join(' ');
+    const secondHalf = words.slice(half).join(' ');
+    if (firstHalf.toLowerCase() === secondHalf.toLowerCase()) {
+      return firstHalf;
+    }
+  }
+
+  // 2. Exactly two identical words: "hello hello" -> "hello", keeping natural short words like "ha ha"
+  if (words.length === 2 && words[0].length >= 3 && words[0].toLowerCase() === words[1].toLowerCase()) {
+    return words[0];
+  }
+
+  // 3. Exact repeated character halves: "Kya haal hai? Kya haal hai?"
+  if (trimmed.length >= 8) {
+    const halfLen = Math.floor(trimmed.length / 2);
+    const part1 = trimmed.slice(0, halfLen).trim();
+    const part2 = trimmed.slice(halfLen).trim();
+    if (part1 && part1.toLowerCase() === part2.toLowerCase()) {
+      return part1;
+    }
+  }
+
+  return trimmed;
+}
+
 export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, paused = false, lang }) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -39,6 +73,8 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
 
   const sendQueueRef = useRef(Promise.resolve());
   const pendingTextRef = useRef('');
+  const finalTranscriptRef = useRef('');
+  const lastDispatchedRef = useRef({ text: '', time: 0 });
   const silenceTimerRef = useRef(null);
   const restartTimerRef = useRef(null);
   const startRetryTimerRef = useRef(null);
@@ -74,15 +110,29 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     }
   }, []);
 
-  // Dispatch text sequentially without dropping phrases
+  // Dispatch text sequentially without dropping phrases or duplicate-sending
   const dispatchTranscript = useCallback((text) => {
-    const trimmed = text?.trim();
-    if (!trimmed || trimmed.length < MIN_TRANSCRIPT_LEN) return;
+    const cleaned = cleanDuplicateTranscript(text?.trim());
+    if (!cleaned || cleaned.length < MIN_TRANSCRIPT_LEN) return;
+
+    // Suppress duplicate dispatches of the same message within 2.5 seconds
+    const now = Date.now();
+    if (
+      cleaned.toLowerCase() === lastDispatchedRef.current.text.toLowerCase() &&
+      now - lastDispatchedRef.current.time < 2500
+    ) {
+      console.warn('[voice] Suppressed duplicate transcript dispatch:', cleaned);
+      return;
+    }
+    lastDispatchedRef.current = { text: cleaned, time: now };
+
     setInterim('');
     pendingTextRef.current = '';
+    finalTranscriptRef.current = '';
+
     sendQueueRef.current = sendQueueRef.current
       .then(async () => {
-        await cbsRef.current.onFinalTranscript?.(trimmed);
+        await cbsRef.current.onFinalTranscript?.(cleaned);
       })
       .catch((err) => {
         console.error('[voice] Transcript dispatch failed:', err);
@@ -256,6 +306,10 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
 
   // Clean up existing SpeechRecognition instance safely
   const destroyRecognition = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
     if (startRetryTimerRef.current) {
       clearTimeout(startRetryTimerRef.current);
       startRetryTimerRef.current = null;
@@ -403,15 +457,21 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
         // Dynamic volume indicator driven by speech activity
         setVolumeLevel(Math.min(95, 45 + Math.floor(Math.random() * 45)));
 
-        let finalChunk = '';
         let interimChunk = '';
         let lastIsFinal = false;
 
-        for (let i = 0; i < event.results.length; i++) {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
           const res = event.results[i];
           const text = res[0]?.transcript || '';
           if (res.isFinal) {
-            finalChunk += text + ' ';
+            const clean = text.trim();
+            if (clean) {
+              if (!finalTranscriptRef.current) {
+                finalTranscriptRef.current = clean;
+              } else if (!finalTranscriptRef.current.toLowerCase().endsWith(clean.toLowerCase())) {
+                finalTranscriptRef.current += ' ' + clean;
+              }
+            }
             lastIsFinal = true;
           } else {
             interimChunk += text;
@@ -419,7 +479,13 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
           }
         }
 
-        const combined = (finalChunk + interimChunk).trim();
+        const rawCombined = (
+          finalTranscriptRef.current
+            ? finalTranscriptRef.current + (interimChunk ? ' ' + interimChunk : '')
+            : interimChunk
+        ).trim();
+
+        const combined = cleanDuplicateTranscript(rawCombined);
         setInterim(combined);
         pendingTextRef.current = combined;
 
@@ -431,8 +497,9 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
             pendingTextRef.current &&
             pendingTextRef.current.trim().length >= MIN_TRANSCRIPT_LEN
           ) {
-            const toSend = pendingTextRef.current.trim();
+            const toSend = cleanDuplicateTranscript(pendingTextRef.current.trim());
             pendingTextRef.current = '';
+            finalTranscriptRef.current = '';
             setInterim('');
             setIsSpeaking(false);
             setVolumeLevel(0);
@@ -495,13 +562,20 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
         if (pausedRef.current) {
           setIsListening(false);
           setInterim('');
+          finalTranscriptRef.current = '';
           return;
+        }
+
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = null;
         }
 
         // Commit any pending speech that wasn't committed before onend
         if (pendingTextRef.current && pendingTextRef.current.trim().length >= MIN_TRANSCRIPT_LEN) {
-          const toSend = pendingTextRef.current.trim();
+          const toSend = cleanDuplicateTranscript(pendingTextRef.current.trim());
           pendingTextRef.current = '';
+          finalTranscriptRef.current = '';
           setInterim('');
           destroyRecognition();
           setIsListening(false);
@@ -572,6 +646,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     if (pendingTextRef.current && pendingTextRef.current.trim().length >= MIN_TRANSCRIPT_LEN) {
       const toSend = pendingTextRef.current.trim();
       pendingTextRef.current = '';
+      finalTranscriptRef.current = '';
       dispatchTranscript(toSend);
     }
 
@@ -585,6 +660,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     stopAudioCapture();
     setIsListening(false);
     setInterim('');
+    finalTranscriptRef.current = '';
     setVolumeLevel(0);
     // Reset fallback state on manual user stop so next start gets a fresh Web Speech attempt
     useFallbackRef.current = false;
@@ -597,6 +673,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
     if (startRetryTimerRef.current) clearTimeout(startRetryTimerRef.current);
     pendingTextRef.current = '';
+    finalTranscriptRef.current = '';
     setInterim('');
     setIsSpeaking(false);
     setIsListening(false);
