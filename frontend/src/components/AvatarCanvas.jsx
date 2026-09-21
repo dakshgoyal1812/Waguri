@@ -216,6 +216,7 @@ export default function AvatarCanvas({
   chatOpen = true,
   vrmUrl = DEFAULT_VRM_URL,
   onModelLoaded = () => {},
+  onTouchReaction = () => {},
 }) {
   const mountRef = useRef(null);
   const vrmRef = useRef(null);
@@ -227,6 +228,11 @@ export default function AvatarCanvas({
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [retryKey, setRetryKey] = useState(0); // bumped by the Retry button
+
+  // Interactive touch reactions (head pat, shoulder tap)
+  const touchReaction = useRef({ active: false, type: null, t: 0, duration: 2.0 });
+  const touchCallbackRef = useRef(onTouchReaction);
+  useEffect(() => { touchCallbackRef.current = onTouchReaction; }, [onTouchReaction]);
 
   // The rAF loop below runs in a mount-only effect, so props it reads must arrive
   // via refs — a bare closure would capture the first render's values forever and
@@ -710,6 +716,16 @@ export default function AvatarCanvas({
               const { aa, ih, ou, ee, oh } = expressionWeights.current;
               return { aa, ih, ou, ee, oh };
             },
+            triggerTouch: (type = 'headPat') => {
+              touchReaction.current = {
+                active: true,
+                type,
+                t: 0,
+                duration: type === 'headPat' ? 2.2 : 1.8,
+              };
+              touchCallbackRef.current?.(type);
+            },
+            touchReactionState: () => ({ ...touchReaction.current }),
           };
 
           console.log(`[AvatarCanvas] VRM model loaded from ${vrmUrl}`);
@@ -780,6 +796,72 @@ export default function AvatarCanvas({
     }
     const onWinResize = () => handleResize(container.clientWidth, container.clientHeight);
     window.addEventListener('resize', onWinResize);
+
+    // ---- Interactive Touch Reactions (Head Pat & Shoulder Tap) via Raycasting ----
+    let downX = 0;
+    let downY = 0;
+    let downTime = 0;
+
+    const onPointerDown = (e) => {
+      downX = e.clientX;
+      downY = e.clientY;
+      downTime = performance.now();
+    };
+
+    const onPointerUp = (e) => {
+      const dt = performance.now() - downTime;
+      const dist = Math.hypot(e.clientX - downX, e.clientY - downY);
+      // Only count as intentional tap/click if short duration (<450ms) and minimal drag (<15px)
+      if (dt > 450 || dist > 15) return;
+
+      const vrm = vrmRef.current;
+      if (!vrm || !vrm.scene) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObject(vrm.scene, true);
+      if (intersects.length > 0) {
+        const hit = intersects[0];
+        const humanoid = vrm.humanoid;
+        let isHead = false;
+
+        if (humanoid) {
+          const headBone = humanoid.getNormalizedBoneNode('head');
+          if (headBone) {
+            const headPos = new THREE.Vector3();
+            headBone.getWorldPosition(headPos);
+            // Within 0.32m of head bone center, or hit point is at/above forehead/hair level
+            if (hit.point.distanceTo(headPos) < 0.32 || hit.point.y >= headPos.y - 0.08) {
+              isHead = true;
+            }
+          }
+        }
+
+        if (!humanoid && hit.point.y > 1.25) {
+          isHead = true;
+        }
+
+        const reactionType = isHead ? 'headPat' : 'shoulderTap';
+        touchReaction.current = {
+          active: true,
+          type: reactionType,
+          t: 0,
+          duration: reactionType === 'headPat' ? 2.2 : 1.8,
+        };
+
+        touchCallbackRef.current?.(reactionType);
+      }
+    };
+
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    renderer.domElement.addEventListener('pointerup', onPointerUp);
 
     // Animation Loop
     const clock = new THREE.Clock();
@@ -985,6 +1067,42 @@ export default function AvatarCanvas({
           if (t >= ent.duration) ent.active = false;
         }
 
+        // ---- 3b. Interactive touch reactions (head pat & shoulder tap) ----
+        const tr = touchReaction.current;
+        let touchHeadTilt = 0;
+        let touchHeadPitch = 0;
+        let touchHeadYaw = 0;
+        let touchSurprised = 0;
+        let touchRelaxed = 0;
+
+        if (tr.active) {
+          tr.t += delta;
+          if (tr.t >= tr.duration) {
+            tr.active = false;
+          } else {
+            const t = tr.t;
+            if (tr.type === 'headPat') {
+              // Gentle sweet tilt leaning into the touch + happy relaxed expression
+              const env = Math.sin((t / tr.duration) * Math.PI);
+              touchHeadTilt = 0.11 * env;
+              touchHeadPitch = -0.05 * env;
+              touchRelaxed = 0.85 * env;
+            } else if (tr.type === 'shoulderTap') {
+              // Quick surprised glance toward the tap, then a warm relieved smile
+              if (t < 0.6) {
+                const env = Math.sin((t / 0.6) * Math.PI);
+                touchHeadYaw = 0.12 * env;
+                touchHeadPitch = 0.05 * env;
+                touchSurprised = 0.75 * env;
+              } else {
+                const env = Math.sin(((t - 0.6) / 1.2) * Math.PI);
+                touchHeadTilt = -0.05 * env;
+                touchRelaxed = 0.70 * env;
+              }
+            }
+          }
+        }
+
         // ---- 3. WHOLE-BODY motion (airi-style stage presence) ----
         // Breathing (chest/shoulders), slow whole-body sway and weight transfer
         // (spine/hips), arm/hand micro-sway — plus a voice-driven emphasis layer
@@ -1028,10 +1146,10 @@ export default function AvatarCanvas({
             if (lShoulder) lShoulder.rotation.z = breath * 0.03;
             if (rShoulder) rShoulder.rotation.z = -breath * 0.03;
             if (head) {
-              head.rotation.y = Math.sin(elapsed * 0.7) * 0.02 * swayScale + headYawFromCursor;
-              head.rotation.z = Math.cos(elapsed * 0.9) * 0.01 * swayScale + gestureHeadZ;
+              head.rotation.y = Math.sin(elapsed * 0.7) * 0.02 * swayScale + headYawFromCursor + touchHeadYaw;
+              head.rotation.z = Math.cos(elapsed * 0.9) * 0.01 * swayScale + gestureHeadZ + touchHeadTilt;
               head.rotation.x = Math.sin(elapsed * 0.5) * 0.008 + headPitchFromCursor + gestureHeadX
-                + speakNod + entranceBow * 0.35;
+                + speakNod + entranceBow * 0.35 + touchHeadPitch;
             }
 
             // Natural arm rest pose — relaxed anime posture with gentle elbow bend and soft finger curl
@@ -1074,9 +1192,9 @@ export default function AvatarCanvas({
             poseWorldBone(rShoulder, binds, 0, 0, -breath * 0.03);
             poseWorldBone(head, binds,
               Math.sin(elapsed * 0.5) * 0.008 + headPitchFromCursor + gestureHeadX
-                + speakNod + entranceBow * 0.35,
-              Math.sin(elapsed * 0.7) * 0.02 * swayScale + headYawFromCursor,
-              Math.cos(elapsed * 0.9) * 0.01 * swayScale + gestureHeadZ);
+                + speakNod + entranceBow * 0.35 + touchHeadPitch,
+              Math.sin(elapsed * 0.7) * 0.02 * swayScale + headYawFromCursor + touchHeadYaw,
+              Math.cos(elapsed * 0.9) * 0.01 * swayScale + gestureHeadZ + touchHeadTilt);
 
             const armPose = armRestPoseRef.current || {};
             const lUpperArm = humanoid.getNormalizedBoneNode('leftUpperArm');
@@ -1157,7 +1275,12 @@ export default function AvatarCanvas({
           const emotionK = Math.min(1, delta * 7); // ~0.3-0.6s settle
 
           for (const emo of EMOTION_PRESETS) {
-            const target = blend.find((c) => c.name === emo)?.value || 0;
+            let target = blend.find((c) => c.name === emo)?.value || 0;
+            if (emo === 'relaxed' && touchRelaxed > 0) {
+              target = Math.max(target, touchRelaxed);
+            } else if (emo === 'surprised' && touchSurprised > 0) {
+              target = Math.max(target, touchSurprised);
+            }
             expressionWeights.current[emo] += (target - expressionWeights.current[emo]) * emotionK;
             setExpr(emo, Math.max(0, Math.min(1, expressionWeights.current[emo])));
           }
@@ -1187,6 +1310,8 @@ export default function AvatarCanvas({
       cancelAnimationFrame(animId);
       resizeObserver?.disconnect();
       window.removeEventListener('resize', onWinResize);
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+      renderer.domElement.removeEventListener('pointerup', onPointerUp);
       cleanupModel?.();
       renderer.dispose();
       if (container.contains(renderer.domElement)) {

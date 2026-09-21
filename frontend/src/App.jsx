@@ -517,6 +517,19 @@ export default function App() {
         isSpeaking={isSpeaking}
         chatOpen={chatOpen}
         vrmUrl={vrmUrl}
+        onTouchReaction={(type) => {
+          if (type === 'headPat') {
+            setCurrentEmotion('relaxed');
+            setTimeout(() => {
+              setCurrentEmotion((prev) => (prev === 'relaxed' ? 'happy' : prev));
+            }, 2500);
+          } else if (type === 'shoulderTap') {
+            setCurrentEmotion('surprised');
+            setTimeout(() => {
+              setCurrentEmotion((prev) => (prev === 'surprised' ? 'happy' : prev));
+            }, 1400);
+          }
+        }}
       />
 
 
