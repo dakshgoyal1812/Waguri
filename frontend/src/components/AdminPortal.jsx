@@ -145,7 +145,7 @@ export default function AdminPortal({ isOpen, onClose, adminEmail }) {
             <div>
               <h3 id="admin-portal-title" className="modal-title">Admin Access Portal</h3>
               <p className="admin-portal-subtitle">
-                Manage allowed Google accounts • Logged in as: <strong>{cleanAdminEmail}</strong>
+                Logged in as: <strong>{cleanAdminEmail}</strong>
               </p>
             </div>
           </div>
@@ -194,9 +194,6 @@ export default function AdminPortal({ isOpen, onClose, adminEmail }) {
               <span>{submitting ? 'Adding...' : 'Allow Access'}</span>
             </button>
           </form>
-          <p className="admin-help-text">
-            💡 When you add someone's email, they will be permitted to sign in with Google without encountering "Access Denied".
-          </p>
         </div>
 
         {/* Whitelist List Section */}
@@ -279,16 +276,6 @@ export default function AdminPortal({ isOpen, onClose, adminEmail }) {
               </ul>
             )}
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="modal-footer admin-portal-footer">
-          <span className="admin-footer-security">
-            🔒 Changes take effect immediately across all devices & Google Auth sessions.
-          </span>
-          <button className="btn btn-secondary" onClick={onClose}>
-            Close
-          </button>
         </div>
       </div>
     </div>
