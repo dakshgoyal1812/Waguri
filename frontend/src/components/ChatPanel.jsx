@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, MessageCircle, Mic, MicOff, Paperclip } from 'lucide-react';
+import { Send, MessageCircle, Mic, MicOff } from 'lucide-react';
 
 const SUGGESTIONS = [
   'What bakery sweets do you recommend today? 🍰',
@@ -166,24 +166,6 @@ export default function ChatPanel({
         )}
 
         <form className="input-bar" onSubmit={handleSubmit}>
-          <button
-            type="button"
-            className="attachment-btn"
-            title="Attachment"
-            aria-label="Attachment"
-            tabIndex={-1}
-          >
-            <Paperclip size={18} />
-          </button>
-          <input
-            type="text"
-            className="chat-input"
-            placeholder={isListening ? 'Listening… or type a message' : 'Say something…'}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isLoading}
-          />
           {micSupported && (
             <button
               type="button"
@@ -200,9 +182,18 @@ export default function ChatPanel({
               }
               aria-label="Toggle voice input"
             >
-              {handsFree ? <Mic size={16} /> : <MicOff size={16} />}
+              {handsFree ? <Mic size={18} /> : <MicOff size={18} />}
             </button>
           )}
+          <input
+            type="text"
+            className="chat-input"
+            placeholder={isListening ? 'Listening… or type a message' : 'Say something…'}
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isLoading}
+          />
           {inputText.trim() && (
             <button
               type="submit"
