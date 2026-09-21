@@ -30,6 +30,7 @@ Waguri — Neuro-sama-inspired AI VTuber companion ("soul container"): VRM 1.0 a
 - 2026-09-15: Chat card / theme / background persisted in localStorage; stale conversation_id self-heals on 404 (backend restart wipes memory storage).
 - 2026-09-15: Secrets only in backend env; frontend talks only to own /api/*; keypool/status + moods + character/update admin-token gated.
 - 2026-09-21: AIRI-style floating transparent chat UI implemented: opaque white card removed; messages float over avatar with top fade mask; frosted white user pills, translucent ice-cyan AI pills with #0284c7 text; floating capsule input bar with paperclip icon; natural mobile portrait camera framing; auth gate and loading screens preserved intact.
+- 2026-09-21: Avatar picker button (.vrm-fab) removed from main stage; integrated into BackgroundPicker modal under tabs [🖼️ Background] and [👤 Avatar] for a clean, unobstructed screen.
 
 ## Current State
 - All PRD milestone suites (M1-M6) pass: `backend` → `node test/run-all.js` (M1 needs port 9090 free — stop any manual mock first); games unit tests pass; bilingual (EN/Hinglish/Hindi TTS voice switch) verified with real Edge TTS.
