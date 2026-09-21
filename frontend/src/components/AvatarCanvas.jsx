@@ -6,9 +6,26 @@ import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 // refuses the file unless a decoder is provided (no-op for non-meshopt models).
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import BirdLoader from './BirdLoader.jsx';
+import { DEFAULT_VRM_URL } from '../lib/vrmStore.js';
 
 const EMOTION_PRESETS = ['happy', 'angry', 'sad', 'surprised', 'relaxed', 'neutral'];
 const VISEME_PRESETS = ['aa', 'ih', 'ou', 'ee', 'oh'];
+
+// Expression synonyms for cross-VRM compatibility (VRM 0.x, VRM 1.0, VRoid exports)
+const EXPRESSION_SYNONYMS = {
+  happy: ['happy', 'joy', 'smile', 'fcl_all_joy', 'fcl_all_smile'],
+  relaxed: ['relaxed', 'fun', 'fcl_all_fun'],
+  sad: ['sad', 'sorrow', 'fcl_all_sorrow'],
+  angry: ['angry', 'anger', 'fcl_all_angry'],
+  surprised: ['surprised', 'surprise', 'fcl_all_surprised'],
+  neutral: ['neutral', 'fcl_all_neutral'],
+  blink: ['blink', 'eye_close', 'fcl_eye_close', 'blink_both'],
+  aa: ['aa', 'a', 'fcl_mth_a'],
+  ih: ['ih', 'i', 'fcl_mth_i'],
+  ou: ['ou', 'u', 'fcl_mth_u'],
+  ee: ['ee', 'e', 'fcl_mth_e'],
+  oh: ['oh', 'o', 'fcl_mth_o'],
+};
 
 // ---- emotion blends ----
 // Visemes (aa/ih/ou/ee/oh) are strictly audio-driven and never injected into idle
@@ -72,6 +89,103 @@ const VOWEL_FORMANTS = {
   ou: [320, 900],
 };
 
+// ---- arm rest pose (model-independent) ----
+// The tuned Euler pose below assumes the bone frames of waguri.vrm; models
+// with different normalized binds (VRM0 axis conversions, A-pose exports)
+// would swing their arms somewhere random — Zero's went straight up. Instead
+// the arms are aligned by WORLD direction: a per-model delta quaternion is
+// computed at load that swings each arm from its own bind direction to these
+// targets (X+ = model's left, Y+ up, Z+ forward toward camera).
+const ARM_REST_TARGETS = {
+  left: {
+    upper: new THREE.Vector3(0.28, -0.95, 0.08).normalize(),  // down, slightly out/forward
+    lower: new THREE.Vector3(0.20, -0.90, 0.32).normalize(),  // gentle elbow bend forward
+  },
+  right: {
+    upper: new THREE.Vector3(-0.28, -0.95, 0.08).normalize(),
+    lower: new THREE.Vector3(-0.20, -0.90, 0.32).normalize(),
+  },
+};
+
+const FINGER_BONES = [
+  'leftIndexProximal', 'leftMiddleProximal', 'leftRingProximal', 'leftLittleProximal',
+  'rightIndexProximal', 'rightMiddleProximal', 'rightRingProximal', 'rightLittleProximal',
+];
+
+// Every normalized bone the animation loop poses; bind quaternions are
+// snapshotted at load so posing composes as bind * delta.
+const POSED_BONES = [
+  'hips', 'spine', 'chest', 'head',
+  'leftShoulder', 'rightShoulder',
+  'leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm',
+  'leftHand', 'rightHand',
+  ...FINGER_BONES,
+];
+
+const _euler = new THREE.Euler();
+const _quatA = new THREE.Quaternion();
+const _quatB = new THREE.Quaternion();
+const _parentQ = new THREE.Quaternion();
+
+// Set a bone's pose as a WORLD-frame Euler delta (x = pitch forward, y = yaw
+// left, z = roll) composed onto its bind quaternion. Conjugating through the
+// parent's world orientation makes the delta direction identical on every
+// model — VRM0 exports (and other rigs) store bone frames flipped/rotated,
+// which is why a local-Euler bow made Zero lean backwards.
+function poseWorldBone(node, bindMap, x, y, z) {
+  if (!node) return;
+  _euler.set(x, y, z);
+  const bind = bindMap ? bindMap.get(node) : null;
+  if (!bind || !node.parent) {
+    node.rotation.copy(_euler);
+    return;
+  }
+  _quatA.setFromEuler(_euler);
+  node.parent.getWorldQuaternion(_parentQ);
+  _quatB.copy(_parentQ).invert().multiply(_quatA).multiply(_parentQ);
+  node.quaternion.copy(_quatB).multiply(bind);
+}
+
+// Compute per-side quaternions that swing the arms from their bind pose into
+// the natural rest pose. Measured once at load, at bind pose; the render loop
+// re-applies them every frame.
+function computeArmRestPose(vrm) {
+  const pose = {};
+  const humanoid = vrm.humanoid;
+  if (!humanoid) return pose;
+
+  const alignDelta = (bone, child, targetDir) => {
+    child.updateWorldMatrix(true, false); // refreshes bone's matrixWorld too
+    const from = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld);
+    const to = new THREE.Vector3().setFromMatrixPosition(child.matrixWorld);
+    const bindDir = to.sub(from).normalize();
+    const worldQuat = new THREE.Quaternion();
+    bone.getWorldQuaternion(worldQuat);
+    // world rotation that turns bindDir into targetDir, expressed in the
+    // bone's local space: D = Qw⁻¹ · R · Qw
+    const rot = new THREE.Quaternion().setFromUnitVectors(bindDir, targetDir);
+    return worldQuat.clone().invert().multiply(rot).multiply(worldQuat);
+  };
+
+  for (const side of ['left', 'right']) {
+    const upper = humanoid.getNormalizedBoneNode(side + 'UpperArm');
+    const lower = humanoid.getNormalizedBoneNode(side + 'LowerArm');
+    const hand = humanoid.getNormalizedBoneNode(side + 'Hand');
+    if (!upper || !lower || !hand) continue;
+
+    const bindUpper = upper.quaternion.clone();
+    const bindLower = lower.quaternion.clone();
+    const dUpper = alignDelta(upper, lower, ARM_REST_TARGETS[side].upper);
+    // Pose the upper arm BEFORE measuring the forearm so the forearm target
+    // is reached relative to the final upper-arm orientation, not the bind.
+    upper.quaternion.copy(bindUpper).multiply(dUpper);
+    const dLower = alignDelta(lower, hand, ARM_REST_TARGETS[side].lower);
+    upper.quaternion.copy(bindUpper); // the render loop re-poses every frame
+    pose[side] = { bindUpper, bindLower, dUpper, dLower };
+  }
+  return pose;
+}
+
 // Device tier breakpoints
 const TIER_MEDIA = {
   mobile: '(max-width: 767px)',
@@ -100,6 +214,7 @@ export default function AvatarCanvas({
   audioElement = null,
   isSpeaking = false,
   chatOpen = true,
+  vrmUrl = DEFAULT_VRM_URL,
   onModelLoaded = () => {},
 }) {
   const mountRef = useRef(null);
@@ -170,6 +285,19 @@ export default function AvatarCanvas({
 
   // wLipSync competition state: the currently winning vowel (hysteresis anchor).
   const lipVowelRef = useRef('aa');
+
+  // Per-model expression name map (canonical VRM1 name -> actual model name).
+  // VRM0.x models (e.g. VRoid exports) keep authored names for non-standard
+  // presets — Zero stores "surprised" as a custom expression named 'Surprised'
+  // — so every setValue goes through this map; null = the model lacks it.
+  const expressionNameMapRef = useRef(null);
+
+  // Bind-pose snapshot of the normalized bones (captured at load, before the
+  // animation loop poses them) — used by the dev probe and rest-pose logic.
+  const bindQuatsRef = useRef(null);
+  // Per-model arm rest deltas (null for the default model, which keeps its
+  // hand-tuned absolute Euler pose).
+  const armRestPoseRef = useRef(null);
 
   // Idle micro-gesture state machine (subtle head tilt / weight shift)
   const gestureState = useRef({
@@ -301,10 +429,18 @@ export default function AvatarCanvas({
     };
   }, []);
 
-  // Main Three.js Scene Setup (re-runs on retryKey for the failure retry button)
+  // Main Three.js Scene Setup. Re-runs on retryKey (failure retry) and on
+  // vrmUrl (avatar switch): the whole stage rebuilds with the new model while
+  // the bird loader covers the swap.
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
+
+    // Fresh loader state so switching avatars shows the bird again
+    setLoadProgress(0);
+    setIsLoaded(false);
+    setLoaderVisible(true);
+    setLoadError(null);
 
     let width = container.clientWidth || 400;
     let height = container.clientHeight || 500;
@@ -422,7 +558,7 @@ export default function AvatarCanvas({
 
     const startVrmLoad = () => {
       loader.load(
-        '/waguri.vrm',
+        vrmUrl,
         (gltf) => {
           if (disposed) return;
           const vrm = gltf.userData.vrm;
@@ -431,7 +567,7 @@ export default function AvatarCanvas({
             return;
           }
 
-          // VRM 1.0 optimization (best-effort; interleaved buffers are safely skipped)
+          // VRM optimization (best-effort; interleaved buffers are safely skipped)
           try {
             VRMUtils.removeUnnecessaryVertices(gltf.scene);
           } catch {
@@ -441,6 +577,30 @@ export default function AvatarCanvas({
             VRMUtils.removeUnnecessaryJoints(gltf.scene);
           } catch {
             // Benign and safe to skip
+          }
+
+          // VRM 0.x models face -Z (Unity convention): rotate them to VRM 1.0's
+          // camera-facing +Z. No-op for VRM 1.0 models like waguri.vrm.
+          VRMUtils.rotateVRM0(vrm);
+
+          // Every added avatar is normalized to the stage's canonical size and
+          // anchor (waguri.vrm's ~1.55m bind-pose height, feet at origin, centered)
+          // so the tuned per-device camera framing works unchanged for any model.
+          // The bundled default keeps its exact legacy path — scale stays 1.
+          if (vrmUrl !== DEFAULT_VRM_URL) {
+            try {
+              const box = new THREE.Box3().setFromObject(vrm.scene);
+              const height = box.max.y - box.min.y;
+              if (height > 0.1 && Number.isFinite(height)) {
+                vrm.scene.scale.setScalar(1.55 / height);
+              }
+              const grounded = new THREE.Box3().setFromObject(vrm.scene);
+              vrm.scene.position.y -= grounded.min.y;
+              vrm.scene.position.x -= (grounded.min.x + grounded.max.x) / 2;
+              vrm.scene.position.z -= (grounded.min.z + grounded.max.z) / 2;
+            } catch {
+              // Framing fallback: leave the model as authored
+            }
           }
 
           // Upgrade unlit hair materials (MeshBasicMaterial) to MeshStandardMaterial
@@ -472,14 +632,53 @@ export default function AvatarCanvas({
             }
           });
 
-          // Position avatar
-          vrm.scene.position.set(0, 0, 0);
-          vrm.scene.rotation.y = 0; // facing camera
+          // Position is set by the normalization block above (default model
+          // stays at the authored origin, facing camera per VRM spec).
           scene.add(vrm.scene);
 
           if (vrm.lookAt) vrm.lookAt.target = lookTarget; // cursor eye-tracking
 
+          // Build the canonical -> actual expression name map for this model
+          // (handles VRM0 authored names like Zero's 'Surprised', 'Joy', 'Fun', etc.).
+          if (vrm.expressionManager) {
+            const available = new Set(
+              (vrm.expressionManager.expressions || []).map((e) => e.expressionName)
+            );
+            const nameMap = {};
+            const allTargets = [...EMOTION_PRESETS, ...VISEME_PRESETS, 'blink'];
+            for (const name of allTargets) {
+              if (available.has(name)) {
+                nameMap[name] = name;
+              } else {
+                const synonyms = EXPRESSION_SYNONYMS[name] || [name];
+                let matched = null;
+                for (const syn of synonyms) {
+                  const found = [...available].find((n) => n && n.toLowerCase() === syn.toLowerCase());
+                  if (found) {
+                    matched = found;
+                    break;
+                  }
+                }
+                nameMap[name] = matched;
+              }
+            }
+            expressionNameMapRef.current = nameMap;
+          } else {
+            expressionNameMapRef.current = null;
+          }
+
           vrmRef.current = vrm;
+
+          // Snapshot normalized-bone bind quaternions (before the animation
+          // loop poses anything) so added models pose as bind * delta.
+          bindQuatsRef.current = new Map();
+          for (const b of POSED_BONES) {
+            const node = vrm.humanoid?.getNormalizedBoneNode(b);
+            if (node) bindQuatsRef.current.set(node, node.quaternion.clone());
+          }
+          // Per-model arm rest pose (world-direction aligned; see the helper).
+          armRestPoseRef.current = vrmUrl === DEFAULT_VRM_URL ? null : computeArmRestPose(vrm);
+
           setLoadProgress(100);
           setIsLoaded(true);
           // Wait for first render frames before starting loader fade-out
@@ -496,13 +695,24 @@ export default function AvatarCanvas({
             loaded: () => !!vrmRef.current,
             speaking: () => speakingRef.current,
             energy: () => energyRef.current,
+            expressionNames: () =>
+              (vrmRef.current?.expressionManager?.expressions || []).map((e) => e.expressionName),
+            expressionWeight: (name) =>
+              vrmRef.current?.expressionManager?.getExpression(name)?.weight ?? null,
+            bindQuats: () =>
+              bindQuatsRef.current
+                ? [...bindQuatsRef.current.entries()].map(([n, q]) => [n.name, q.toArray()])
+                : null,
+            armPose: () => armRestPoseRef.current,
+            // Dev aid: hold the entrance bow at its peak to inspect the pose
+            holdBow: () => { entranceState.current = { active: true, t: 0.7, duration: 12 }; },
             visemes: () => {
               const { aa, ih, ou, ee, oh } = expressionWeights.current;
               return { aa, ih, ou, ee, oh };
             },
           };
 
-          console.log('[AvatarCanvas] Waguri VRM 1.0 model loaded successfully');
+          console.log(`[AvatarCanvas] VRM model loaded from ${vrmUrl}`);
         },
         (progress) => {
           if (progress.total > 0) {
@@ -762,10 +972,29 @@ export default function AvatarCanvas({
           }
         }
 
+        // ---- 3a. Entrance greeting bow value (on model load): spine bows, head
+        //          dips, a little hold, then release — folded into the pose below.
+        const ent = entranceState.current;
+        let entranceBow = 0;
+        if (ent.active) {
+          ent.t += delta;
+          const t = ent.t;
+          const bowIn = Math.min(1, t / 0.7);
+          const bowOut = Math.min(1, Math.max(0, (t - (ent.duration - 0.8)) / 0.8));
+          entranceBow = 0.38 * bowIn * (1 - bowOut);
+          if (t >= ent.duration) ent.active = false;
+        }
+
         // ---- 3. WHOLE-BODY motion (airi-style stage presence) ----
         // Breathing (chest/shoulders), slow whole-body sway and weight transfer
         // (spine/hips), arm/hand micro-sway — plus a voice-driven emphasis layer
         // so she leans and nods with her speech instead of talking "from the neck up".
+        //
+        // The shipped waguri.vrm keeps its hand-tuned absolute Euler pose (identity
+        // risk-free); every ADDED model poses relative to its own bind quaternions,
+        // with the arms aligned by WORLD direction (see computeArmRestPose) —
+        // otherwise models with different bone frames (VRM0, other exporters) get
+        // random arm swings.
         if (humanoid) {
           const breath = Math.sin(elapsed * 2.2);        // ~21/min chest cycle
           const sway = Math.sin(elapsed * 0.45);         // slow ~14s torso drift
@@ -778,74 +1007,98 @@ export default function AvatarCanvas({
           const lShoulder = humanoid.getNormalizedBoneNode('leftShoulder');
           const rShoulder = humanoid.getNormalizedBoneNode('rightShoulder');
 
-          if (chest) chest.rotation.x = breath * 0.02 + voiceEnergy * 0.012;
-          if (spine) {
-            spine.rotation.x = breath * 0.012 + voiceEnergy * 0.02;
-            spine.rotation.y = sway * 0.045
-              + (speakingRef.current ? Math.sin(elapsed * 2.1) * 0.025 * voiceEnergy : 0);
+          // Idle sway (softened while tracking) + gesture offsets; the cursor
+          // moves her EYES — the head only gets the tiny organic follow. While
+          // speaking she nods subtly on the voice envelope (~1.4 Hz).
+          const swayScale = look.enabled ? 0.4 : 1;
+          const speakSway = speakingRef.current ? Math.sin(elapsed * 2.1) * 0.025 * voiceEnergy : 0;
+          const speakNod = speakingRef.current ? Math.sin(elapsed * 8.5) * 0.03 * voiceEnergy : 0;
+
+          if (vrmUrl === DEFAULT_VRM_URL) {
+            // Shipped model: tuned absolute pose, kept exactly as designed.
+            if (chest) chest.rotation.x = breath * 0.02 + voiceEnergy * 0.012;
+            if (spine) {
+              spine.rotation.x = breath * 0.012 + voiceEnergy * 0.02 + entranceBow;
+              spine.rotation.y = sway * 0.045 + speakSway;
+            }
+            if (hips) {
+              hips.rotation.y = sway * 0.03;             // whole body drifts with the torso
+              hips.rotation.z = weight * 0.015 + gestureHipsZ;
+            }
+            if (lShoulder) lShoulder.rotation.z = breath * 0.03;
+            if (rShoulder) rShoulder.rotation.z = -breath * 0.03;
+            if (head) {
+              head.rotation.y = Math.sin(elapsed * 0.7) * 0.02 * swayScale + headYawFromCursor;
+              head.rotation.z = Math.cos(elapsed * 0.9) * 0.01 * swayScale + gestureHeadZ;
+              head.rotation.x = Math.sin(elapsed * 0.5) * 0.008 + headPitchFromCursor + gestureHeadX
+                + speakNod + entranceBow * 0.35;
+            }
+
+            // Natural arm rest pose — relaxed anime posture with gentle elbow bend and soft finger curl
+            const lUpperArm = humanoid.getNormalizedBoneNode('leftUpperArm');
+            const rUpperArm = humanoid.getNormalizedBoneNode('rightUpperArm');
+            const lLowerArm = humanoid.getNormalizedBoneNode('leftLowerArm');
+            const rLowerArm = humanoid.getNormalizedBoneNode('rightLowerArm');
+            const lHand = humanoid.getNormalizedBoneNode('leftHand');
+            const rHand = humanoid.getNormalizedBoneNode('rightHand');
+
+            if (lUpperArm) lUpperArm.rotation.set(0.08 + breath * 0.015, 0.05, -1.28 + breath * 0.02);
+            if (rUpperArm) rUpperArm.rotation.set(0.08 + breath * 0.015, -0.05, 1.28 - breath * 0.02);
+
+            // Gentle elbow bend forward (~20°) so arms aren't rigid sticks
+            if (lLowerArm) lLowerArm.rotation.set(-0.35, 0.12, -0.15);
+            if (rLowerArm) rLowerArm.rotation.set(-0.35, -0.12, 0.15);
+
+            // Natural relaxed wrists
+            if (lHand) lHand.rotation.set(0.08, 0.10, -0.05);
+            if (rHand) rHand.rotation.set(0.08, -0.10, 0.05);
+
+            // Softly curl fingers so hands aren't flat boards
+            for (const fb of FINGER_BONES) {
+              const node = humanoid.getNormalizedBoneNode(fb);
+              if (node) node.rotation.z = fb.startsWith('left') ? 0.22 : -0.22;
+            }
+          } else {
+            // Added models: torso/head deltas are applied in WORLD space (see
+            // poseWorldBone) so bow/nod/sway directions transfer to any rig,
+            // and the arms use the world-aligned rest quaternions computed at
+            // load. Hands/fingers stay at bind — with the arms resting, they
+            // hang naturally on every rig without per-model wrist tuning.
+            const binds = bindQuatsRef.current;
+            poseWorldBone(hips, binds, 0, sway * 0.03, weight * 0.015 + gestureHipsZ);
+            poseWorldBone(spine, binds,
+              breath * 0.012 + voiceEnergy * 0.02 + entranceBow,
+              sway * 0.045 + speakSway, 0);
+            poseWorldBone(chest, binds, breath * 0.02 + voiceEnergy * 0.012, 0, 0);
+            poseWorldBone(lShoulder, binds, 0, 0, breath * 0.03);
+            poseWorldBone(rShoulder, binds, 0, 0, -breath * 0.03);
+            poseWorldBone(head, binds,
+              Math.sin(elapsed * 0.5) * 0.008 + headPitchFromCursor + gestureHeadX
+                + speakNod + entranceBow * 0.35,
+              Math.sin(elapsed * 0.7) * 0.02 * swayScale + headYawFromCursor,
+              Math.cos(elapsed * 0.9) * 0.01 * swayScale + gestureHeadZ);
+
+            const armPose = armRestPoseRef.current || {};
+            const lUpperArm = humanoid.getNormalizedBoneNode('leftUpperArm');
+            const rUpperArm = humanoid.getNormalizedBoneNode('rightUpperArm');
+            const lLowerArm = humanoid.getNormalizedBoneNode('leftLowerArm');
+            const rLowerArm = humanoid.getNormalizedBoneNode('rightLowerArm');
+
+            if (armPose.left && lUpperArm) {
+              lUpperArm.quaternion.copy(armPose.left.bindUpper).multiply(armPose.left.dUpper)
+                .multiply(_quatB.setFromEuler(_euler.set(0.05, 0, breath * 0.015)));
+            }
+            if (armPose.right && rUpperArm) {
+              rUpperArm.quaternion.copy(armPose.right.bindUpper).multiply(armPose.right.dUpper)
+                .multiply(_quatB.setFromEuler(_euler.set(0.05, 0, -breath * 0.015)));
+            }
+            if (armPose.left && lLowerArm) {
+              lLowerArm.quaternion.copy(armPose.left.bindLower).multiply(armPose.left.dLower);
+            }
+            if (armPose.right && rLowerArm) {
+              rLowerArm.quaternion.copy(armPose.right.bindLower).multiply(armPose.right.dLower);
+            }
           }
-          if (hips) {
-            hips.rotation.y = sway * 0.03;               // whole body drifts with the torso
-            hips.rotation.z = weight * 0.015 + gestureHipsZ;
-          }
-          if (lShoulder) lShoulder.rotation.z = breath * 0.03;
-          if (rShoulder) rShoulder.rotation.z = -breath * 0.03;
-          if (head) {
-            // Idle sway (softened while tracking) + gesture offsets; the cursor
-            // moves her EYES — the head only gets the tiny organic follow. While
-            // speaking she nods subtly on the voice envelope (~1.4 Hz).
-            const swayScale = look.enabled ? 0.4 : 1;
-            head.rotation.y = Math.sin(elapsed * 0.7) * 0.02 * swayScale + headYawFromCursor;
-            head.rotation.z = Math.cos(elapsed * 0.9) * 0.01 * swayScale + gestureHeadZ;
-            head.rotation.x = Math.sin(elapsed * 0.5) * 0.008 + headPitchFromCursor + gestureHeadX
-              + (speakingRef.current ? Math.sin(elapsed * 8.5) * 0.03 * voiceEnergy : 0);
-          }
-
-          // Natural arm rest pose — relaxed anime posture with gentle elbow bend and soft finger curl
-          const lUpperArm = humanoid.getNormalizedBoneNode('leftUpperArm');
-          const rUpperArm = humanoid.getNormalizedBoneNode('rightUpperArm');
-          const lLowerArm = humanoid.getNormalizedBoneNode('leftLowerArm');
-          const rLowerArm = humanoid.getNormalizedBoneNode('rightLowerArm');
-          const lHand = humanoid.getNormalizedBoneNode('leftHand');
-          const rHand = humanoid.getNormalizedBoneNode('rightHand');
-
-          if (lUpperArm) lUpperArm.rotation.set(0.08 + breath * 0.015, 0.05, -1.28 + breath * 0.02);
-          if (rUpperArm) rUpperArm.rotation.set(0.08 + breath * 0.015, -0.05, 1.28 - breath * 0.02);
-
-          // Gentle elbow bend forward (~20°) so arms aren't rigid sticks
-          if (lLowerArm) lLowerArm.rotation.set(-0.35, 0.12, -0.15);
-          if (rLowerArm) rLowerArm.rotation.set(-0.35, -0.12, 0.15);
-
-          // Natural relaxed wrists
-          if (lHand) lHand.rotation.set(0.08, 0.10, -0.05);
-          if (rHand) rHand.rotation.set(0.08, -0.10, 0.05);
-
-          // Softly curl fingers so hands aren't flat boards
-          const fingerBones = [
-            'leftIndexProximal', 'leftMiddleProximal', 'leftRingProximal', 'leftLittleProximal',
-            'rightIndexProximal', 'rightMiddleProximal', 'rightRingProximal', 'rightLittleProximal',
-          ];
-          for (const fb of fingerBones) {
-            const node = humanoid.getNormalizedBoneNode(fb);
-            if (node) node.rotation.z = fb.startsWith('left') ? 0.22 : -0.22;
-          }
-        }
-
-        // ---- 3a. Entrance greeting bow (on model load): spine bows, head dips, a
-        //          little hold, then release — forced [happy] face below while it plays.
-        const ent = entranceState.current;
-        let entranceBow = 0;
-        if (ent.active) {
-          ent.t += delta;
-          const t = ent.t;
-          const bowIn = Math.min(1, t / 0.7);
-          const bowOut = Math.min(1, Math.max(0, (t - (ent.duration - 0.8)) / 0.8));
-          entranceBow = 0.38 * bowIn * (1 - bowOut);
-          const spine = humanoid?.getNormalizedBoneNode('spine');
-          const head = humanoid?.getNormalizedBoneNode('head');
-          if (spine) spine.rotation.x += entranceBow;
-          if (head) head.rotation.x += entranceBow * 0.35;
-          if (t >= ent.duration) ent.active = false;
         }
 
         // ---- 4. Natural Blinking Loop — 2-6s randomized; occasional double-blink;
@@ -891,24 +1144,31 @@ export default function AvatarCanvas({
           expressionWeights.current[v] = next;
         }
 
-        // ---- 6. Update VRM Expressions
+        // ---- 6. Update VRM Expressions (names resolved per model — see the
+        //         expression name map built at load) ----
         if (vrm.expressionManager) {
+          const nameMap = expressionNameMapRef.current;
+          const setExpr = (name, value) => {
+            const actual = nameMap ? nameMap[name] : name;
+            if (actual) vrm.expressionManager.setValue(actual, value);
+          };
+
           const blend = EMOTION_BLENDS[emotionRef.current] || EMOTION_BLENDS.neutral;
           const emotionK = Math.min(1, delta * 7); // ~0.3-0.6s settle
 
           for (const emo of EMOTION_PRESETS) {
             const target = blend.find((c) => c.name === emo)?.value || 0;
             expressionWeights.current[emo] += (target - expressionWeights.current[emo]) * emotionK;
-            vrm.expressionManager.setValue(emo, Math.max(0, Math.min(1, expressionWeights.current[emo])));
+            setExpr(emo, Math.max(0, Math.min(1, expressionWeights.current[emo])));
           }
 
           // Visemes: driven purely by audio lip-sync (strictly 0 in idle/silence).
           for (const v of VISEME_PRESETS) {
-            vrm.expressionManager.setValue(v, expressionWeights.current[v]);
+            setExpr(v, expressionWeights.current[v]);
           }
 
           // Blink
-          vrm.expressionManager.setValue('blink', expressionWeights.current.blink);
+          setExpr('blink', expressionWeights.current.blink);
 
           vrm.expressionManager.update();
         }
@@ -933,7 +1193,7 @@ export default function AvatarCanvas({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [retryKey]);
+  }, [retryKey, vrmUrl]);
 
   return (
     <div className="canvas-container" ref={mountRef}>

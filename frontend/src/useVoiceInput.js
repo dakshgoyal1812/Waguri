@@ -1,17 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { speechToText } from './api.js';
 
-// Real-time voice input engine with dual support:
-// 1. Web Speech API (streaming, instant, bilingual en-IN/hi-IN).
+// Real-time voice input engine with dual resilience:
+// 1. Web Speech API (primary in Chrome, Edge, Safari; streaming, zero latency, bilingual en-IN/hi-IN).
 // 2. AudioContext + AnalyserNode (real-time mic volume level meter & acoustic VAD).
-// 3. MediaRecorder + Groq Whisper /api/stt fallback (for Firefox/Brave or network errors).
-// 4. Auto-restart resilience: recreates SpeechRecognition cleanly to prevent Chromium stalls.
-// 5. Silence detection: commits interim transcripts after natural pauses so no voice is lost.
-// 6. Turn-taking pause: suspends mic when avatar is speaking to prevent speaker echo & self-loops.
+// 3. MediaRecorder + Groq Whisper /api/stt fallback (for Firefox, Brave, or speech-server outages).
+// 4. State-machine guards: prevents Chromium InvalidStateError crashes on rapid start/stop/pause.
+// 5. Final-aware silence detection: commits transcripts naturally without cutting sentences mid-thought.
+// 6. Turn-taking pause & barge-in: suspends mic when avatar is speaking; sustained loud speech interrupts her.
+
+const FINAL_SETTLE_MS = 800;
+const INTERIM_SILENCE_MS = 2200;
+const MIN_TRANSCRIPT_LEN = 2;
+const BARGE_IN_THRESHOLD = 48; // Loud enough to distinguish real user voice from speaker bleed
+const BARGE_IN_SUSTAIN_MS = 550; // Sustained speech burst needed to trigger interruption
+
 export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, paused = false, lang }) {
   const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false); // acoustic sound detected
-  const [volumeLevel, setVolumeLevel] = useState(0); // 0 to 100% volume
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [volumeLevel, setVolumeLevel] = useState(0);
   const [interim, setInterim] = useState('');
   const [voiceError, setVoiceError] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -24,16 +31,21 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
   const recorderRef = useRef(null);
   const recorderChunksRef = useRef([]);
 
+  // Recognition state tracking: 'idle' | 'starting' | 'listening' | 'stopping'
+  const recStateRef = useRef('idle');
   const wantListeningRef = useRef(false);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+
   const sendQueueRef = useRef(Promise.resolve());
   const pendingTextRef = useRef('');
   const silenceTimerRef = useRef(null);
   const restartTimerRef = useRef(null);
+  const startRetryTimerRef = useRef(null);
   const hadSoundInUtteranceRef = useRef(false);
   const silenceStartRef = useRef(null);
   const useFallbackRef = useRef(false);
+  const networkErrorCountRef = useRef(0);
 
   const langRef = useRef(lang);
   langRef.current = lang;
@@ -49,7 +61,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
   // Dispatch text sequentially without dropping phrases
   const dispatchTranscript = useCallback((text) => {
     const trimmed = text?.trim();
-    if (!trimmed) return;
+    if (!trimmed || trimmed.length < MIN_TRANSCRIPT_LEN) return;
     setInterim('');
     pendingTextRef.current = '';
     sendQueueRef.current = sendQueueRef.current
@@ -84,10 +96,23 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     setIsSpeaking(false);
   }, []);
 
-  // Start mic stream & Web Audio analyser for live acoustic volume meter
+  // Start mic stream & Web Audio analyser for live acoustic volume meter and VAD
   const startAudioCapture = useCallback(async () => {
     if (!mediaSupported) return null;
-    if (streamRef.current && streamRef.current.active) return streamRef.current;
+
+    // Secure context check: getUserMedia requires HTTPS or localhost
+    if (typeof window !== 'undefined' && window.isSecureContext === false && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      setVoiceError('Microphone requires a secure connection (HTTPS).');
+      return null;
+    }
+
+    // If stream is already active, resume AudioContext if suspended and ensure poll loop is running
+    if (streamRef.current && streamRef.current.active) {
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        try { await audioCtxRef.current.resume(); } catch { /* ignore */ }
+      }
+      return streamRef.current;
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -104,7 +129,9 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       if (AudioCtx) {
         const ctx = new AudioCtx();
         audioCtxRef.current = ctx;
-        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
 
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
@@ -115,24 +142,49 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
 
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         let speakingDecayTimer = null;
-        const VAD_THRESHOLD = 26; // Voice activity detection threshold (above room ambient noise)
+        const VAD_THRESHOLD = 26; // Voice activity detection threshold
+        let bargeInSince = null;
+        let bargeInFired = false;
 
-        const pollVolume = () => {
-          if (!wantListeningRef.current || pausedRef.current) {
-            setVolumeLevel(0);
-            setIsSpeaking(false);
-            if (wantListeningRef.current && pausedRef.current) {
-              animFrameRef.current = requestAnimationFrame(pollVolume);
-            }
-            return;
-          }
-
+        const readVolume = () => {
           analyser.getByteFrequencyData(dataArray);
           let sum = 0;
           for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-          const avg = sum / dataArray.length;
-          // Scale to 0..100%
-          const vol = Math.min(100, Math.round((avg / 55) * 100));
+          return Math.min(100, Math.round(((sum / dataArray.length) / 55) * 100));
+        };
+
+        const pollVolume = () => {
+          if (!wantListeningRef.current) {
+            setVolumeLevel(0);
+            setIsSpeaking(false);
+            return;
+          }
+
+          if (pausedRef.current) {
+            // Paused (avatar speaking / reply loading): keep metering so the
+            // user SEES the mic is alive, and detect barge-in — sustained loud
+            // speech means the user is talking over her.
+            if (analyserRef.current) {
+              const vol = readVolume();
+              setVolumeLevel(vol);
+              if (vol >= BARGE_IN_THRESHOLD) {
+                if (bargeInSince === null) bargeInSince = Date.now();
+                if (!bargeInFired && Date.now() - bargeInSince >= BARGE_IN_SUSTAIN_MS) {
+                  bargeInFired = true;
+                  cbsRef.current.onSpeechStart?.();
+                }
+              } else {
+                bargeInSince = null;
+                bargeInFired = false;
+              }
+            } else {
+              setVolumeLevel(0);
+            }
+            animFrameRef.current = requestAnimationFrame(pollVolume);
+            return;
+          }
+
+          const vol = readVolume();
           setVolumeLevel(vol);
 
           if (vol >= VAD_THRESHOLD && !pausedRef.current) {
@@ -157,7 +209,6 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
             if (useFallbackRef.current && hadSoundInUtteranceRef.current && !pausedRef.current) {
               if (!silenceStartRef.current) silenceStartRef.current = Date.now();
               else if (Date.now() - silenceStartRef.current > 1400) {
-                // Stopped talking in fallback mode -> stop current recording to trigger transcription
                 silenceStartRef.current = null;
                 hadSoundInUtteranceRef.current = false;
                 if (recorderRef.current && recorderRef.current.state === 'recording') {
@@ -169,6 +220,8 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
 
           animFrameRef.current = requestAnimationFrame(pollVolume);
         };
+
+        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
         animFrameRef.current = requestAnimationFrame(pollVolume);
       }
 
@@ -186,9 +239,14 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     }
   }, [mediaSupported]);
 
-  // Clean up existing SpeechRecognition instance
+  // Clean up existing SpeechRecognition instance safely
   const destroyRecognition = useCallback(() => {
+    if (startRetryTimerRef.current) {
+      clearTimeout(startRetryTimerRef.current);
+      startRetryTimerRef.current = null;
+    }
     if (recRef.current) {
+      recStateRef.current = 'stopping';
       try {
         recRef.current.onstart = null;
         recRef.current.onend = null;
@@ -199,12 +257,11 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       } catch { /* ignore */ }
       recRef.current = null;
     }
+    recStateRef.current = 'idle';
   }, []);
 
-  // Fallback recorder runner
+  // Fallback recorder runner (MediaRecorder + Groq Whisper /api/stt)
   const startFallbackRecording = useCallback(async () => {
-    // Never record while the avatar is speaking/loading (paused): the mic would
-    // capture her TTS voice and later transcribe it into an echo self-send.
     if (!wantListeningRef.current || pausedRef.current) return;
     const stream = streamRef.current || (await startAudioCapture());
     if (!stream) return;
@@ -215,6 +272,10 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
         : MediaRecorder.isTypeSupported('audio/webm')
         ? 'audio/webm'
         : '';
+
+      if (recorderRef.current && recorderRef.current.state === 'recording') {
+        try { recorderRef.current.stop(); } catch { /* ignore */ }
+      }
 
       const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       recorderChunksRef.current = [];
@@ -229,7 +290,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
         try {
           if (chunks.length) {
             const blob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' });
-            if (blob.size >= 1800) { // smaller is pure silence / room noise
+            if (blob.size >= 1600) {
               setIsProcessing(true);
               try {
                 const res = await speechToText(blob, langRef.current);
@@ -238,22 +299,21 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
                 }
               } catch (e) {
                 console.warn('[voice fallback] STT error:', e);
-                setVoiceError(`Voice transcription error: ${e.message}`);
+                // Non-fatal error; don't brick the session
+                setVoiceError(`Voice transcription notice: ${e.message}`);
               } finally {
                 setIsProcessing(false);
               }
             }
           }
         } finally {
-          // Always re-arm for the next phrase — including after a too-silent clip,
-          // which previously killed the recorder chain for the rest of the session —
-          // but never while paused (avatar speaking) or the mic would capture her.
+          // Re-arm for next phrase if still active and not paused
           if (wantListeningRef.current && useFallbackRef.current && !pausedRef.current) {
             setTimeout(() => {
               if (wantListeningRef.current && useFallbackRef.current && !pausedRef.current) {
                 startFallbackRecording();
               }
-            }, 300);
+            }, 250);
           }
         }
       };
@@ -268,14 +328,19 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
   }, [startAudioCapture, dispatchTranscript]);
 
   // Primary Web Speech API runner
-  const startRecognition = useCallback(async () => {
+  const startRecognition = useCallback(async (retryCount = 0) => {
     if (useFallbackRef.current || !webSpeechSupported) {
       useFallbackRef.current = true;
       startFallbackRecording();
       return;
     }
 
+    if (recStateRef.current === 'starting' || recStateRef.current === 'listening') {
+      return; // already active
+    }
+
     destroyRecognition();
+    recStateRef.current = 'starting';
 
     try {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -286,31 +351,33 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       rec.lang = langRef.current || 'en-IN';
 
       rec.onstart = () => {
+        recStateRef.current = 'listening';
         setIsListening(true);
         setVoiceError(null);
+        networkErrorCountRef.current = 0; // reset error count on successful start
       };
 
       rec.onspeechstart = () => {
         if (pausedRef.current) return;
-        cbsRef.current.onSpeechStart?.(); // barge-in hook on real speech
+        cbsRef.current.onSpeechStart?.();
       };
 
       rec.onresult = (event) => {
-        if (pausedRef.current) {
-          // Avatar is currently speaking or generating — ignore speaker echoes!
-          return;
-        }
+        if (pausedRef.current) return;
 
         let finalChunk = '';
         let interimChunk = '';
+        let lastIsFinal = false;
 
         for (let i = 0; i < event.results.length; i++) {
           const res = event.results[i];
           const text = res[0]?.transcript || '';
           if (res.isFinal) {
             finalChunk += text + ' ';
+            lastIsFinal = true;
           } else {
             interimChunk += text;
+            lastIsFinal = false;
           }
         }
 
@@ -318,54 +385,79 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
         setInterim(combined);
         pendingTextRef.current = combined;
 
-        // Reset silence debounce timer: commits speech ~1.2s after user stops talking
+        // Final-aware silence commit
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = setTimeout(() => {
-          if (!pausedRef.current && pendingTextRef.current && pendingTextRef.current.trim().length > 0) {
+          if (
+            !pausedRef.current &&
+            pendingTextRef.current &&
+            pendingTextRef.current.trim().length >= MIN_TRANSCRIPT_LEN
+          ) {
             const toSend = pendingTextRef.current.trim();
             pendingTextRef.current = '';
             setInterim('');
-            // Disarm recognition session immediately so no trailing noises or echoes are picked up
             destroyRecognition();
             setIsListening(false);
             dispatchTranscript(toSend);
           }
-        }, 1200);
+        }, lastIsFinal ? FINAL_SETTLE_MS : INTERIM_SILENCE_MS);
       };
 
       rec.onerror = (event) => {
-        if (event.error === 'no-speech') {
-          // Normal pause in speech — continuous mode keeps listening
+        if (event.error === 'no-speech' || event.error === 'aborted') {
           return;
         }
-        if (event.error === 'aborted') {
-          return;
-        }
+
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          setVoiceError('Microphone permission denied — please allow microphone access.');
+          setVoiceError('Microphone permission denied — please allow microphone access in your browser.');
           wantListeningRef.current = false;
           setIsListening(false);
+          recStateRef.current = 'idle';
           return;
         }
+
+        if (event.error === 'audio-capture') {
+          setVoiceError('Microphone capture failed. Please check your microphone hardware connection.');
+          recStateRef.current = 'idle';
+          return;
+        }
+
         if (event.error === 'network') {
-          console.warn('[voice] Web Speech API network error, switching to high-accuracy Groq Whisper fallback.');
-          useFallbackRef.current = true;
+          networkErrorCountRef.current += 1;
+          console.warn(`[voice] SpeechRecognition network error (attempt ${networkErrorCountRef.current}/3)`);
           destroyRecognition();
+
+          // Transient network error: retry Web Speech up to 2 times before falling back to Whisper
+          if (networkErrorCountRef.current < 3 && wantListeningRef.current && !pausedRef.current) {
+            if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+            restartTimerRef.current = setTimeout(() => {
+              if (wantListeningRef.current && !pausedRef.current) {
+                startRecognition(0);
+              }
+            }, 600);
+            return;
+          }
+
+          console.warn('[voice] Switching to Groq Whisper STT fallback.');
+          useFallbackRef.current = true;
           startFallbackRecording();
           return;
         }
-        console.warn('[voice] Speech recognition warning:', event.error);
+
+        console.warn('[voice] Speech recognition event error:', event.error);
       };
 
       rec.onend = () => {
+        recStateRef.current = 'idle';
+
         if (pausedRef.current) {
           setIsListening(false);
           setInterim('');
           return;
         }
 
-        // If there is pending speech that didn't get committed before Chrome ended, commit it now
-        if (pendingTextRef.current && pendingTextRef.current.trim().length > 0) {
+        // Commit any pending speech that wasn't committed before onend
+        if (pendingTextRef.current && pendingTextRef.current.trim().length >= MIN_TRANSCRIPT_LEN) {
           const toSend = pendingTextRef.current.trim();
           pendingTextRef.current = '';
           setInterim('');
@@ -375,11 +467,11 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
           return;
         }
 
-        // Restart cleanly with fresh instance after a short pause if user still wants listening and not paused
+        // Clean restart after short pause if user still wants listening
         if (wantListeningRef.current && !pausedRef.current) {
           if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
           restartTimerRef.current = setTimeout(() => {
-            if (wantListeningRef.current && !pausedRef.current) {
+            if (wantListeningRef.current && !pausedRef.current && recStateRef.current === 'idle') {
               startRecognition();
             }
           }, 200);
@@ -392,7 +484,22 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       recRef.current = rec;
       rec.start();
     } catch (e) {
-      console.warn('[voice] SpeechRecognition start failed, switching to fallback:', e);
+      recStateRef.current = 'idle';
+      console.warn('[voice] SpeechRecognition start error:', e.message);
+
+      // If Chromium threw InvalidStateError (previous session winding down), backoff and retry
+      if (e.name === 'InvalidStateError' && retryCount < 2) {
+        if (startRetryTimerRef.current) clearTimeout(startRetryTimerRef.current);
+        startRetryTimerRef.current = setTimeout(() => {
+          if (wantListeningRef.current && !pausedRef.current) {
+            startRecognition(retryCount + 1);
+          }
+        }, 200);
+        return;
+      }
+
+      // If repeated start failures, fallback to MediaRecorder + Whisper
+      console.warn('[voice] Start failed repeatedly, falling back to MediaRecorder STT.');
       useFallbackRef.current = true;
       startFallbackRecording();
     }
@@ -403,7 +510,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     setVoiceError(null);
     wantListeningRef.current = true;
 
-    // Acquire audio stream and start volume meter
+    // Acquire audio stream & start volume meter
     await startAudioCapture();
 
     // Start recognition engine
@@ -418,9 +525,10 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     wantListeningRef.current = false;
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    if (startRetryTimerRef.current) clearTimeout(startRetryTimerRef.current);
 
-    // If there is any pending transcript, send it before stopping
-    if (pendingTextRef.current && pendingTextRef.current.trim().length > 0) {
+    // Commit any pending transcript before stopping
+    if (pendingTextRef.current && pendingTextRef.current.trim().length >= MIN_TRANSCRIPT_LEN) {
       const toSend = pendingTextRef.current.trim();
       pendingTextRef.current = '';
       dispatchTranscript(toSend);
@@ -437,15 +545,18 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     setIsListening(false);
     setInterim('');
     setVolumeLevel(0);
+    // Reset fallback state on manual user stop so next start gets a fresh Web Speech attempt
+    useFallbackRef.current = false;
+    networkErrorCountRef.current = 0;
   }, [destroyRecognition, stopAudioCapture, dispatchTranscript]);
 
   // Suspend listening temporarily while avatar is speaking or generating
   const pauseListening = useCallback(() => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    if (startRetryTimerRef.current) clearTimeout(startRetryTimerRef.current);
     pendingTextRef.current = '';
     setInterim('');
-    setVolumeLevel(0);
     setIsSpeaking(false);
     setIsListening(false);
     destroyRecognition();
@@ -454,7 +565,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     }
   }, [destroyRecognition]);
 
-  // Language switch: update lang on active engine
+  // Language switch: restart active engine with new language
   useEffect(() => {
     if (wantListeningRef.current && !pausedRef.current) {
       if (recRef.current) {
@@ -466,7 +577,13 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
   // Sync with enabled and paused props
   useEffect(() => {
     if (enabled && !paused) {
-      start();
+      // Small settle window (100ms) after unpausing ensures Chrome's audio subsystem is ready
+      const t = setTimeout(() => {
+        if (wantListeningRef.current || enabled) {
+          start();
+        }
+      }, 100);
+      return () => clearTimeout(t);
     } else if (enabled && paused) {
       pauseListening();
     } else {
@@ -480,6 +597,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       wantListeningRef.current = false;
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      if (startRetryTimerRef.current) clearTimeout(startRetryTimerRef.current);
       destroyRecognition();
       stopAudioCapture();
     };
@@ -496,6 +614,11 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     isFallback: useFallbackRef.current,
     start,
     stop,
-    resetError: () => setVoiceError(null),
+    resetError: () => {
+      setVoiceError(null);
+      useFallbackRef.current = false;
+      networkErrorCountRef.current = 0;
+      if (enabled && !paused) start();
+    },
   };
 }

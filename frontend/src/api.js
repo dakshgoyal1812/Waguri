@@ -113,12 +113,38 @@ export async function speechToText(blob, lang) {
     'x-audio-type': blob.type || 'audio/webm',
   };
   if (lang) headers['x-audio-lang'] = lang.startsWith('hi') ? 'hi' : 'en';
-  const res = await fetch(`${BASE_URL}/api/stt`, {
-    method: 'POST',
-    headers,
-    body: blob,
-  });
-  return handleResponse(res);
+
+  const primaryUrl = `${BASE_URL}/api/stt`;
+  try {
+    const res = await fetch(primaryUrl, {
+      method: 'POST',
+      headers,
+      body: blob,
+    });
+    if (!res.ok && BASE_URL === '' && PROD_DEFAULT_BACKEND) {
+      const fallbackRes = await fetch(`${PROD_DEFAULT_BACKEND}/api/stt`, {
+        method: 'POST',
+        headers,
+        body: blob,
+      });
+      return handleResponse(fallbackRes);
+    }
+    return handleResponse(res);
+  } catch (err) {
+    if (BASE_URL === '' && PROD_DEFAULT_BACKEND) {
+      try {
+        const fallbackRes = await fetch(`${PROD_DEFAULT_BACKEND}/api/stt`, {
+          method: 'POST',
+          headers,
+          body: blob,
+        });
+        return handleResponse(fallbackRes);
+      } catch {
+        // preserve original error
+      }
+    }
+    throw err;
+  }
 }
 
 export async function checkBackendHealth() {

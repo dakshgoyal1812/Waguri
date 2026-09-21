@@ -269,15 +269,26 @@ export default function ChatPanel({
         {voiceError && (
           <div className="voice-caption voice-error" role="alert">
             <span>⚠️ {voiceError}</span>
-            <button
-              type="button"
-              className="voice-error-dismiss"
-              onClick={onResetVoiceError}
-              title="Dismiss error"
-              aria-label="Dismiss error"
-            >
-              ×
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+              <button
+                type="button"
+                className="quick-pill"
+                style={{ padding: '2px 8px', fontSize: '0.72rem', height: '22px', border: '1px solid rgba(239, 68, 68, 0.4)' }}
+                onClick={onResetVoiceError}
+                title="Retry microphone"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                className="voice-error-dismiss"
+                onClick={onResetVoiceError}
+                title="Dismiss error"
+                aria-label="Dismiss error"
+              >
+                ×
+              </button>
+            </div>
           </div>
         )}
       </div>
