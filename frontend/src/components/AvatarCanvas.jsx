@@ -920,6 +920,7 @@ export default function AvatarCanvas({
       const vrm = vrmRef.current;
       if (vrm) {
         const humanoid = vrm.humanoid;
+        let finalHeadZ = 0;
 
         // ---- cursor & touch eye-tracking + touch idle look-around ----
         const look = lookState.current;
@@ -1143,7 +1144,7 @@ export default function AvatarCanvas({
           // Composite head angles
           const finalHeadX = idleHeadPitch + headPitchFromCursor + gestureHeadX + speakNod + entranceBow * 0.35 + touchHeadPitch;
           const finalHeadY = idleHeadYaw + headYawFromCursor + gestureHeadY + touchHeadYaw;
-          const finalHeadZ = idleHeadTilt + gestureHeadZ + touchHeadTilt;
+          finalHeadZ = idleHeadTilt + gestureHeadZ + touchHeadTilt;
 
           // Organic Contrapposto: spine counter-tilts with head for natural anime posture
           const contraSpineZ = -finalHeadZ * 0.35 + gestureSpineZ;
