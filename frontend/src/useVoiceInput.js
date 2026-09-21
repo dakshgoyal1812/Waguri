@@ -46,14 +46,26 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
   const silenceStartRef = useRef(null);
   const useFallbackRef = useRef(false);
   const networkErrorCountRef = useRef(0);
+  const silentFailTimerRef = useRef(null);  // Watchdog: detects Web Speech silent failure
+  const gotResultRef = useRef(false);        // True once onresult fires at least once
 
   const langRef = useRef(lang);
   langRef.current = lang;
   const cbsRef = useRef({ onFinalTranscript, onSpeechStart });
   cbsRef.current = { onFinalTranscript, onSpeechStart };
 
+  // Detect PWA standalone mode: Web Speech API exists but silently fails in
+  // standalone display mode on most mobile browsers (onstart fires, onresult never does).
+  const isPwaStandalone = typeof window !== 'undefined' && (
+    window.matchMedia?.('(display-mode: standalone)')?.matches ||
+    window.navigator?.standalone === true  // iOS Safari
+  );
+  const isMobile = typeof navigator !== 'undefined' &&
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
   const webSpeechSupported = typeof window !== 'undefined' &&
-    (window.SpeechRecognition || window.webkitSpeechRecognition) != null;
+    (window.SpeechRecognition || window.webkitSpeechRecognition) != null &&
+    !(isPwaStandalone && isMobile);  // Skip Web Speech in mobile PWA standalone
   const mediaSupported = typeof window !== 'undefined' &&
     window.navigator?.mediaDevices?.getUserMedia != null;
   const supported = webSpeechSupported || mediaSupported;
@@ -244,6 +256,10 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       clearTimeout(startRetryTimerRef.current);
       startRetryTimerRef.current = null;
     }
+    if (silentFailTimerRef.current) {
+      clearTimeout(silentFailTimerRef.current);
+      silentFailTimerRef.current = null;
+    }
     if (recRef.current) {
       recStateRef.current = 'stopping';
       try {
@@ -354,6 +370,20 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
         setIsListening(true);
         setVoiceError(null);
         networkErrorCountRef.current = 0; // reset error count on successful start
+        gotResultRef.current = false;
+
+        // Silent-failure watchdog: if Web Speech starts but produces zero results
+        // within 4 seconds, it's silently broken (common in mobile PWA standalone).
+        // Auto-switch to MediaRecorder + Whisper.
+        if (silentFailTimerRef.current) clearTimeout(silentFailTimerRef.current);
+        silentFailTimerRef.current = setTimeout(() => {
+          if (!gotResultRef.current && recStateRef.current === 'listening' && wantListeningRef.current) {
+            console.warn('[voice] Web Speech API silent failure detected — no results after 4s. Switching to Whisper fallback.');
+            destroyRecognition();
+            useFallbackRef.current = true;
+            startFallbackRecording();
+          }
+        }, 4000);
       };
 
       rec.onspeechstart = () => {
@@ -362,6 +392,9 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       };
 
       rec.onresult = (event) => {
+        gotResultRef.current = true;
+        // Cancel watchdog — Web Speech API is working
+        if (silentFailTimerRef.current) { clearTimeout(silentFailTimerRef.current); silentFailTimerRef.current = null; }
         if (pausedRef.current) return;
 
         let finalChunk = '';
