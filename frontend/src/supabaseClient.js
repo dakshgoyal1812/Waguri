@@ -50,14 +50,12 @@ export const supabase = isSupabaseConfigured
     };
 
 export const ADMIN_EMAILS = [
-  'dakshgoyal1234567@gmail.com',
   'dakshgoyal1812@gmail.com',
 ];
 
 export const ALLOWED_EMAILS = [
   'dakshgoyal1812@gmail.com',
   'goyaldaksh284@gmail.com',
-  'dakshgoyal1234567@gmail.com',
 ];
 
 export function isAdminEmail(email) {

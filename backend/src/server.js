@@ -202,7 +202,6 @@ app.post('/api/moods', requireAdmin, async (req, res, next) => {
 
 // Whitelist access management for Google authentication
 const ADMIN_EMAILS = [
-  'dakshgoyal1234567@gmail.com',
   'dakshgoyal1812@gmail.com',
 ];
 

@@ -13,7 +13,6 @@ export function createMemoryStorage() {
     apiKeys: new Map(), // id -> key row
     usageLog: [],
     allowedUsers: new Map([
-      ['dakshgoyal1234567@gmail.com', { email: 'dakshgoyal1234567@gmail.com', added_by: 'system', created_at: new Date().toISOString() }],
       ['dakshgoyal1812@gmail.com', { email: 'dakshgoyal1812@gmail.com', added_by: 'system', created_at: new Date().toISOString() }],
       ['goyaldaksh284@gmail.com', { email: 'goyaldaksh284@gmail.com', added_by: 'system', created_at: new Date().toISOString() }],
     ]),
