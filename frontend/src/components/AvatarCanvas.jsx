@@ -305,12 +305,12 @@ export default function AvatarCanvas({
   // hand-tuned absolute Euler pose).
   const armRestPoseRef = useRef(null);
 
-  // Idle micro-gesture state machine (subtle head tilt / weight shift)
+  // Idle micro-gesture state machine (lively anime head tilt / nod / weight shift)
   const gestureState = useRef({
-    nextAt: 5.0,
-    type: null,        // 'headTiltL' | 'headTiltR' | 'headTiltNod' | 'weightShift'
+    nextAt: 1.5,
+    type: null,        // 'headTiltL' | 'headTiltR' | 'cheerfulNod' | 'curiousLean' | 'weightShift'
     t: 0,              // seconds since gesture start
-    duration: 3.0,
+    duration: 2.,
   });
 
   // Entrance animation (greeting bow) after a successful model load
@@ -1020,28 +1020,43 @@ export default function AvatarCanvas({
         energyRef.current = energy + (frameEnergy - energy) * energyK;
         const voiceEnergy = energyRef.current;
 
-        // ---- 2. Idle micro-gestures (feeling layer: she fidgets when YOU are
-        //         inactive; paused while she speaks so lip-sync stays the focus) ----
+        // ---- 2. Dynamic idle anime gestures (frequent & lively like AIRI) ----
         const g = gestureState.current;
-        let gestureHeadZ = 0, gestureHeadX = 0, gestureHipsZ = 0;
+        let gestureHeadZ = 0, gestureHeadX = 0, gestureHeadY = 0, gestureHipsZ = 0, gestureChestX = 0, gestureSpineZ = 0;
         if (!entranceState.current.active && !speakingRef.current) {
           if (g.type === null && elapsed > g.nextAt) {
             const roll = Math.random();
-            g.type = roll < 0.35 ? 'headTiltL' : roll < 0.7 ? 'headTiltR' : roll < 0.85 ? 'headTiltNod' : 'weightShift';
+            g.type = roll < 0.28 ? 'headTiltL' : roll < 0.56 ? 'headTiltR' : roll < 0.74 ? 'cheerfulNod' : roll < 0.88 ? 'curiousLean' : 'weightShift';
             g.t = 0;
-            g.duration = 2.6 + Math.random() * 1.6;
+            g.duration = 2.0 + Math.random() * 1.4;
           }
           if (g.type) {
             g.t += delta;
-            // smooth envelope: rise, hold, fall
-            const env = Math.max(0, Math.min(1, Math.min(g.t / 0.8, (g.duration - g.t) / 0.8)));
-            if (g.type === 'headTiltL') gestureHeadZ = 0.09 * env;
-            else if (g.type === 'headTiltR') gestureHeadZ = -0.09 * env;
-            else if (g.type === 'headTiltNod') gestureHeadX = 0.05 * env;
-            else if (g.type === 'weightShift') { gestureHipsZ = 0.02 * env; gestureHeadZ = 0.03 * env; }
+            // smooth sine envelope: rise, hold, fall
+            const env = Math.sin((Math.min(g.duration, g.t) / g.duration) * Math.PI);
+            if (g.type === 'headTiltL') {
+              gestureHeadZ = 0.12 * env;
+              gestureSpineZ = -0.04 * env;
+              gestureHeadY = 0.035 * env;
+            } else if (g.type === 'headTiltR') {
+              gestureHeadZ = -0.12 * env;
+              gestureSpineZ = 0.04 * env;
+              gestureHeadY = -0.035 * env;
+            } else if (g.type === 'cheerfulNod') {
+              gestureHeadX = (Math.sin(g.t * 6.0) * 0.07 + 0.03) * env;
+              gestureChestX = 0.035 * env;
+            } else if (g.type === 'curiousLean') {
+              gestureChestX = 0.06 * env;
+              gestureHeadX = -0.045 * env;
+              gestureHeadZ = 0.04 * env;
+            } else if (g.type === 'weightShift') {
+              gestureHipsZ = 0.045 * env;
+              gestureHeadZ = 0.07 * env;
+              gestureSpineZ = -0.03 * env;
+            }
             if (g.t >= g.duration) {
               g.type = null;
-              g.nextAt = elapsed + 6 + Math.random() * 6;
+              g.nextAt = elapsed + 1.0 + Math.random() * 2.2;
             }
           }
         }
@@ -1095,20 +1110,16 @@ export default function AvatarCanvas({
           }
         }
 
-        // ---- 3. WHOLE-BODY motion (airi-style stage presence) ----
-        // Breathing (chest/shoulders), slow whole-body sway and weight transfer
-        // (spine/hips), arm/hand micro-sway — plus a voice-driven emphasis layer
-        // so she leans and nods with her speech instead of talking "from the neck up".
-        //
-        // The shipped waguri.vrm keeps its hand-tuned absolute Euler pose (identity
-        // risk-free); every ADDED model poses relative to its own bind quaternions,
-        // with the arms aligned by WORLD direction (see computeArmRestPose) —
-        // otherwise models with different bone frames (VRM0, other exporters) get
-        // random arm swings.
+        // ---- 3. WHOLE-BODY MOTION (AIRI-style energetic stage presence) ----
         if (humanoid) {
-          const breath = Math.sin(elapsed * 2.2);        // ~21/min chest cycle
-          const sway = Math.sin(elapsed * 0.45);         // slow ~14s torso drift
-          const weight = Math.sin(elapsed * 0.23);       // even slower weight transfer
+          // Energetic multi-harmonic breathing cycle (inhale + chest expansion)
+          const breathFast = Math.sin(elapsed * 2.3);
+          const breathSlow = Math.sin(elapsed * 1.15) * 0.35;
+          const breath = breathFast + breathSlow;
+
+          // Lively torso sway and weight transfer (rhythmic periods ~3-5s)
+          const sway = Math.sin(elapsed * 1.1) * 0.075 + Math.sin(elapsed * 0.55) * 0.045;
+          const weight = Math.sin(elapsed * 0.85) * 0.035 + Math.sin(elapsed * 1.7) * 0.02;
 
           const chest = humanoid.getNormalizedBoneNode('chest');
           const spine = humanoid.getNormalizedBoneNode('spine');
@@ -1117,34 +1128,51 @@ export default function AvatarCanvas({
           const lShoulder = humanoid.getNormalizedBoneNode('leftShoulder');
           const rShoulder = humanoid.getNormalizedBoneNode('rightShoulder');
 
-          // Idle sway (softened while tracking) + gesture offsets; the cursor
-          // moves her EYES — the head only gets the tiny organic follow. While
-          // speaking she nods subtly on the voice envelope (~1.4 Hz).
-          const swayScale = look.enabled ? 0.4 : 1;
-          const speakSway = speakingRef.current ? Math.sin(elapsed * 2.1) * 0.025 * voiceEnergy : 0;
-          const speakNod = speakingRef.current ? Math.sin(elapsed * 8.5) * 0.03 * voiceEnergy : 0;
+          // AIRI continuous lively head motion (tilt roll, nod pitch, gentle turn yaw)
+          const idleHeadTilt = Math.sin(elapsed * 1.15) * 0.07 + Math.sin(elapsed * 0.58) * 0.05;
+          const idleHeadYaw = Math.sin(elapsed * 0.82) * 0.05 + Math.sin(elapsed * 1.64) * 0.025;
+          const idleHeadPitch = Math.sin(elapsed * 2.05) * 0.04 + Math.sin(elapsed * 1.02) * 0.025;
+
+          // When speaking, energetic voice-driven nods and whole-body bounce
+          const speakNod = speakingRef.current
+            ? (Math.sin(elapsed * 8.2) * 0.08 + Math.sin(elapsed * 4.1) * 0.05) * voiceEnergy
+            : 0;
+          const speakSway = speakingRef.current ? Math.sin(elapsed * 2.6) * 0.055 * voiceEnergy : 0;
+          const speakChest = speakingRef.current ? Math.sin(elapsed * 5.2) * 0.035 * voiceEnergy : 0;
+
+          // Composite head angles
+          const finalHeadX = idleHeadPitch + headPitchFromCursor + gestureHeadX + speakNod + entranceBow * 0.35 + touchHeadPitch;
+          const finalHeadY = idleHeadYaw + headYawFromCursor + gestureHeadY + touchHeadYaw;
+          const finalHeadZ = idleHeadTilt + gestureHeadZ + touchHeadTilt;
+
+          // Organic Contrapposto: spine counter-tilts with head for natural anime posture
+          const contraSpineZ = -finalHeadZ * 0.35 + gestureSpineZ;
+          const contraHipsZ = weight * 0.025 + gestureHipsZ + (finalHeadZ * 0.22);
 
           if (vrmUrl === DEFAULT_VRM_URL) {
-            // Shipped model: tuned absolute pose, kept exactly as designed.
-            if (chest) chest.rotation.x = breath * 0.02 + voiceEnergy * 0.012;
+            // Shipped model
+            if (chest) {
+              chest.rotation.x = breath * 0.035 + gestureChestX + voiceEnergy * 0.02 + speakChest;
+              chest.rotation.z = -sway * 0.025;
+            }
             if (spine) {
-              spine.rotation.x = breath * 0.012 + voiceEnergy * 0.02 + entranceBow;
-              spine.rotation.y = sway * 0.045 + speakSway;
+              spine.rotation.x = breath * 0.02 + voiceEnergy * 0.025 + entranceBow;
+              spine.rotation.y = sway * 0.065 + speakSway;
+              spine.rotation.z = contraSpineZ;
             }
             if (hips) {
-              hips.rotation.y = sway * 0.03;             // whole body drifts with the torso
-              hips.rotation.z = weight * 0.015 + gestureHipsZ;
+              hips.rotation.y = sway * 0.04;
+              hips.rotation.z = contraHipsZ;
             }
-            if (lShoulder) lShoulder.rotation.z = breath * 0.03;
-            if (rShoulder) rShoulder.rotation.z = -breath * 0.03;
+            if (lShoulder) lShoulder.rotation.z = breath * 0.045 + Math.sin(elapsed * 1.1) * 0.02;
+            if (rShoulder) rShoulder.rotation.z = -breath * 0.045 - Math.sin(elapsed * 1.1) * 0.02;
             if (head) {
-              head.rotation.y = Math.sin(elapsed * 0.7) * 0.02 * swayScale + headYawFromCursor + touchHeadYaw;
-              head.rotation.z = Math.cos(elapsed * 0.9) * 0.01 * swayScale + gestureHeadZ + touchHeadTilt;
-              head.rotation.x = Math.sin(elapsed * 0.5) * 0.008 + headPitchFromCursor + gestureHeadX
-                + speakNod + entranceBow * 0.35 + touchHeadPitch;
+              head.rotation.x = finalHeadX;
+              head.rotation.y = finalHeadY;
+              head.rotation.z = finalHeadZ;
             }
 
-            // Natural arm rest pose — relaxed anime posture with gentle elbow bend and soft finger curl
+            // Natural arm rest pose with gentle reactive sway
             const lUpperArm = humanoid.getNormalizedBoneNode('leftUpperArm');
             const rUpperArm = humanoid.getNormalizedBoneNode('rightUpperArm');
             const lLowerArm = humanoid.getNormalizedBoneNode('leftLowerArm');
@@ -1152,41 +1180,31 @@ export default function AvatarCanvas({
             const lHand = humanoid.getNormalizedBoneNode('leftHand');
             const rHand = humanoid.getNormalizedBoneNode('rightHand');
 
-            if (lUpperArm) lUpperArm.rotation.set(0.08 + breath * 0.015, 0.05, -1.28 + breath * 0.02);
-            if (rUpperArm) rUpperArm.rotation.set(0.08 + breath * 0.015, -0.05, 1.28 - breath * 0.02);
+            if (lUpperArm) lUpperArm.rotation.set(0.08 + breath * 0.025, 0.05 + sway * 0.025, -1.28 + breath * 0.035);
+            if (rUpperArm) rUpperArm.rotation.set(0.08 + breath * 0.025, -0.05 - sway * 0.025, 1.28 - breath * 0.035);
 
-            // Gentle elbow bend forward (~20°) so arms aren't rigid sticks
-            if (lLowerArm) lLowerArm.rotation.set(-0.35, 0.12, -0.15);
-            if (rLowerArm) rLowerArm.rotation.set(-0.35, -0.12, 0.15);
+            if (lLowerArm) lLowerArm.rotation.set(-0.35 + breath * 0.015, 0.12, -0.15);
+            if (rLowerArm) rLowerArm.rotation.set(-0.35 + breath * 0.015, -0.12, 0.15);
 
-            // Natural relaxed wrists
             if (lHand) lHand.rotation.set(0.08, 0.10, -0.05);
             if (rHand) rHand.rotation.set(0.08, -0.10, 0.05);
 
-            // Softly curl fingers so hands aren't flat boards
             for (const fb of FINGER_BONES) {
               const node = humanoid.getNormalizedBoneNode(fb);
               if (node) node.rotation.z = fb.startsWith('left') ? 0.22 : -0.22;
             }
           } else {
-            // Added models: torso/head deltas are applied in WORLD space (see
-            // poseWorldBone) so bow/nod/sway directions transfer to any rig,
-            // and the arms use the world-aligned rest quaternions computed at
-            // load. Hands/fingers stay at bind — with the arms resting, they
-            // hang naturally on every rig without per-model wrist tuning.
+            // Added models via world-aligned bones
             const binds = bindQuatsRef.current;
-            poseWorldBone(hips, binds, 0, sway * 0.03, weight * 0.015 + gestureHipsZ);
+            poseWorldBone(hips, binds, 0, sway * 0.04, contraHipsZ);
             poseWorldBone(spine, binds,
-              breath * 0.012 + voiceEnergy * 0.02 + entranceBow,
-              sway * 0.045 + speakSway, 0);
-            poseWorldBone(chest, binds, breath * 0.02 + voiceEnergy * 0.012, 0, 0);
-            poseWorldBone(lShoulder, binds, 0, 0, breath * 0.03);
-            poseWorldBone(rShoulder, binds, 0, 0, -breath * 0.03);
-            poseWorldBone(head, binds,
-              Math.sin(elapsed * 0.5) * 0.008 + headPitchFromCursor + gestureHeadX
-                + speakNod + entranceBow * 0.35 + touchHeadPitch,
-              Math.sin(elapsed * 0.7) * 0.02 * swayScale + headYawFromCursor + touchHeadYaw,
-              Math.cos(elapsed * 0.9) * 0.01 * swayScale + gestureHeadZ + touchHeadTilt);
+              breath * 0.02 + voiceEnergy * 0.025 + entranceBow,
+              sway * 0.065 + speakSway,
+              contraSpineZ);
+            poseWorldBone(chest, binds, breath * 0.035 + gestureChestX + voiceEnergy * 0.02 + speakChest, 0, -sway * 0.025);
+            poseWorldBone(lShoulder, binds, 0, 0, breath * 0.045 + Math.sin(elapsed * 1.1) * 0.02);
+            poseWorldBone(rShoulder, binds, 0, 0, -breath * 0.045 - Math.sin(elapsed * 1.1) * 0.02);
+            poseWorldBone(head, binds, finalHeadX, finalHeadY, finalHeadZ);
 
             const armPose = armRestPoseRef.current || {};
             const lUpperArm = humanoid.getNormalizedBoneNode('leftUpperArm');
@@ -1196,11 +1214,11 @@ export default function AvatarCanvas({
 
             if (armPose.left && lUpperArm) {
               lUpperArm.quaternion.copy(armPose.left.bindUpper).multiply(armPose.left.dUpper)
-                .multiply(_quatB.setFromEuler(_euler.set(0.05, 0, breath * 0.015)));
+                .multiply(_quatB.setFromEuler(_euler.set(0.05, sway * 0.025, breath * 0.035)));
             }
             if (armPose.right && rUpperArm) {
               rUpperArm.quaternion.copy(armPose.right.bindUpper).multiply(armPose.right.dUpper)
-                .multiply(_quatB.setFromEuler(_euler.set(0.05, 0, -breath * 0.015)));
+                .multiply(_quatB.setFromEuler(_euler.set(0.05, -sway * 0.025, -breath * 0.035)));
             }
             if (armPose.left && lLowerArm) {
               lLowerArm.quaternion.copy(armPose.left.bindLower).multiply(armPose.left.dLower);
@@ -1272,6 +1290,10 @@ export default function AvatarCanvas({
               target = Math.max(target, touchRelaxed);
             } else if (emo === 'surprised' && touchSurprised > 0) {
               target = Math.max(target, touchSurprised);
+            } else if (emo === 'happy') {
+              // AIRI sweet anime smile lift during cute head tilts
+              const idleSmile = Math.abs(finalHeadZ) * 0.45;
+              target = Math.max(target, Math.min(0.35, idleSmile));
             }
             expressionWeights.current[emo] += (target - expressionWeights.current[emo]) * emotionK;
             setExpr(emo, Math.max(0, Math.min(1, expressionWeights.current[emo])));
