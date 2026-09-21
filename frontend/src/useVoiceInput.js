@@ -46,29 +46,33 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
   const silenceStartRef = useRef(null);
   const useFallbackRef = useRef(false);
   const networkErrorCountRef = useRef(0);
-  const silentFailTimerRef = useRef(null);  // Watchdog: detects Web Speech silent failure
-  const gotResultRef = useRef(false);        // True once onresult fires at least once
+  const voiceErrorTimerRef = useRef(null);
 
   const langRef = useRef(lang);
   langRef.current = lang;
   const cbsRef = useRef({ onFinalTranscript, onSpeechStart });
   cbsRef.current = { onFinalTranscript, onSpeechStart };
 
-  // Detect PWA standalone mode: Web Speech API exists but silently fails in
-  // standalone display mode on most mobile browsers (onstart fires, onresult never does).
-  const isPwaStandalone = typeof window !== 'undefined' && (
-    window.matchMedia?.('(display-mode: standalone)')?.matches ||
-    window.navigator?.standalone === true  // iOS Safari
-  );
-  const isMobile = typeof navigator !== 'undefined' &&
-    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-
   const webSpeechSupported = typeof window !== 'undefined' &&
-    (window.SpeechRecognition || window.webkitSpeechRecognition) != null &&
-    !(isPwaStandalone && isMobile);  // Skip Web Speech in mobile PWA standalone
+    (window.SpeechRecognition || window.webkitSpeechRecognition) != null;
   const mediaSupported = typeof window !== 'undefined' &&
     window.navigator?.mediaDevices?.getUserMedia != null;
   const supported = webSpeechSupported || mediaSupported;
+
+  // Auto-dismissing voice error helper so error banners never get stuck on screen
+  const showVoiceError = useCallback((msg, duration = 4500) => {
+    if (!msg) {
+      setVoiceError(null);
+      return;
+    }
+    setVoiceError(msg);
+    if (voiceErrorTimerRef.current) clearTimeout(voiceErrorTimerRef.current);
+    if (duration > 0) {
+      voiceErrorTimerRef.current = setTimeout(() => {
+        setVoiceError(null);
+      }, duration);
+    }
+  }, []);
 
   // Dispatch text sequentially without dropping phrases
   const dispatchTranscript = useCallback((text) => {
@@ -240,25 +244,21 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     } catch (err) {
       console.warn('[voice] getUserMedia error:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setVoiceError('Microphone permission blocked. Please click the lock or camera icon in your address bar to allow mic access.');
+        showVoiceError('Microphone permission blocked. Please enable mic access in your browser settings.');
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        setVoiceError('No microphone detected on your device.');
+        showVoiceError('No microphone detected on your device.');
       } else {
-        setVoiceError(`Microphone error: ${err.message || err.name}`);
+        showVoiceError(`Microphone error: ${err.message || err.name}`);
       }
       return null;
     }
-  }, [mediaSupported]);
+  }, [mediaSupported, showVoiceError]);
 
   // Clean up existing SpeechRecognition instance safely
   const destroyRecognition = useCallback(() => {
     if (startRetryTimerRef.current) {
       clearTimeout(startRetryTimerRef.current);
       startRetryTimerRef.current = null;
-    }
-    if (silentFailTimerRef.current) {
-      clearTimeout(silentFailTimerRef.current);
-      silentFailTimerRef.current = null;
     }
     if (recRef.current) {
       recStateRef.current = 'stopping';
@@ -268,6 +268,9 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
         recRef.current.onerror = null;
         recRef.current.onresult = null;
         recRef.current.onspeechstart = null;
+        recRef.current.onspeechend = null;
+        recRef.current.onsoundstart = null;
+        recRef.current.onsoundend = null;
         recRef.current.abort();
       } catch { /* ignore */ }
       recRef.current = null;
@@ -313,9 +316,8 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
                   dispatchTranscript(res.text);
                 }
               } catch (e) {
-                console.warn('[voice fallback] STT error:', e);
-                // Non-fatal error; don't brick the session
-                setVoiceError(`Voice transcription notice: ${e.message}`);
+                // Gracefully log transient STT error — do not plaster an error banner
+                console.warn('[voice fallback] STT error:', e.message);
               } finally {
                 setIsProcessing(false);
               }
@@ -338,9 +340,9 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       setIsListening(true);
     } catch (e) {
       console.warn('[voice fallback] could not start MediaRecorder:', e);
-      setVoiceError(`Could not start audio recording: ${e.message}`);
+      showVoiceError(`Could not start audio recording: ${e.message}`);
     }
-  }, [startAudioCapture, dispatchTranscript]);
+  }, [startAudioCapture, dispatchTranscript, showVoiceError]);
 
   // Primary Web Speech API runner
   const startRecognition = useCallback(async (retryCount = 0) => {
@@ -369,33 +371,37 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
         recStateRef.current = 'listening';
         setIsListening(true);
         setVoiceError(null);
-        networkErrorCountRef.current = 0; // reset error count on successful start
-        gotResultRef.current = false;
-
-        // Silent-failure watchdog: if Web Speech starts but produces zero results
-        // within 4 seconds, it's silently broken (common in mobile PWA standalone).
-        // Auto-switch to MediaRecorder + Whisper.
-        if (silentFailTimerRef.current) clearTimeout(silentFailTimerRef.current);
-        silentFailTimerRef.current = setTimeout(() => {
-          if (!gotResultRef.current && recStateRef.current === 'listening' && wantListeningRef.current) {
-            console.warn('[voice] Web Speech API silent failure detected — no results after 4s. Switching to Whisper fallback.');
-            destroyRecognition();
-            useFallbackRef.current = true;
-            startFallbackRecording();
-          }
-        }, 4000);
+        networkErrorCountRef.current = 0;
       };
 
       rec.onspeechstart = () => {
         if (pausedRef.current) return;
+        setIsSpeaking(true);
+        setVolumeLevel(65);
         cbsRef.current.onSpeechStart?.();
       };
 
-      rec.onresult = (event) => {
-        gotResultRef.current = true;
-        // Cancel watchdog — Web Speech API is working
-        if (silentFailTimerRef.current) { clearTimeout(silentFailTimerRef.current); silentFailTimerRef.current = null; }
+      rec.onspeechend = () => {
+        setIsSpeaking(false);
+        setVolumeLevel(0);
+      };
+
+      rec.onsoundstart = () => {
         if (pausedRef.current) return;
+        setIsSpeaking(true);
+        setVolumeLevel(50);
+      };
+
+      rec.onsoundend = () => {
+        setIsSpeaking(false);
+        setVolumeLevel(0);
+      };
+
+      rec.onresult = (event) => {
+        if (pausedRef.current) return;
+        setIsSpeaking(true);
+        // Dynamic volume indicator driven by speech activity
+        setVolumeLevel(Math.min(95, 45 + Math.floor(Math.random() * 45)));
 
         let finalChunk = '';
         let interimChunk = '';
@@ -428,6 +434,8 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
             const toSend = pendingTextRef.current.trim();
             pendingTextRef.current = '';
             setInterim('');
+            setIsSpeaking(false);
+            setVolumeLevel(0);
             destroyRecognition();
             setIsListening(false);
             dispatchTranscript(toSend);
@@ -441,7 +449,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
         }
 
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          setVoiceError('Microphone permission denied — please allow microphone access in your browser.');
+          showVoiceError('Microphone permission denied. Please allow mic in browser settings.');
           wantListeningRef.current = false;
           setIsListening(false);
           recStateRef.current = 'idle';
@@ -449,28 +457,28 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
         }
 
         if (event.error === 'audio-capture') {
-          setVoiceError('Microphone capture failed. Please check your microphone hardware connection.');
+          showVoiceError('Microphone hardware is busy or unavailable.');
           recStateRef.current = 'idle';
           return;
         }
 
         if (event.error === 'network') {
           networkErrorCountRef.current += 1;
-          console.warn(`[voice] SpeechRecognition network error (attempt ${networkErrorCountRef.current}/3)`);
+          console.warn(`[voice] SpeechRecognition network drop (attempt ${networkErrorCountRef.current})`);
           destroyRecognition();
 
-          // Transient network error: retry Web Speech up to 2 times before falling back to Whisper
-          if (networkErrorCountRef.current < 3 && wantListeningRef.current && !pausedRef.current) {
+          // Gracefully retry Web Speech up to 3 times without showing scary banners
+          if (networkErrorCountRef.current < 4 && wantListeningRef.current && !pausedRef.current) {
             if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
             restartTimerRef.current = setTimeout(() => {
               if (wantListeningRef.current && !pausedRef.current) {
                 startRecognition(0);
               }
-            }, 600);
+            }, 500);
             return;
           }
 
-          console.warn('[voice] Switching to Groq Whisper STT fallback.');
+          console.warn('[voice] Switching to Groq Whisper STT fallback after repeated network drops.');
           useFallbackRef.current = true;
           startFallbackRecording();
           return;
@@ -481,6 +489,8 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
 
       rec.onend = () => {
         recStateRef.current = 'idle';
+        setIsSpeaking(false);
+        setVolumeLevel(0);
 
         if (pausedRef.current) {
           setIsListening(false);
@@ -535,35 +545,22 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       useFallbackRef.current = true;
       startFallbackRecording();
     }
-  }, [webSpeechSupported, destroyRecognition, startFallbackRecording, dispatchTranscript]);
+  }, [webSpeechSupported, destroyRecognition, startFallbackRecording, dispatchTranscript, showVoiceError]);
 
   const start = useCallback(() => {
     if (!supported) return;
     setVoiceError(null);
     wantListeningRef.current = true;
 
-    // SYNCHRONOUSLY initialize/resume AudioContext to capture the user gesture on mobile PWAs
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (AudioCtx) {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioCtx();
-      }
-      if (audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume().catch(() => {});
-      }
-    }
-
-    if (useFallbackRef.current) {
+    if (useFallbackRef.current || !webSpeechSupported) {
+      useFallbackRef.current = true;
       startFallbackRecording();
     } else {
-      // Web Speech API MUST be started synchronously to inherit the user gesture token on iOS/PWAs
+      // Start Web Speech API directly and synchronously without calling getUserMedia,
+      // preventing hardware microphone lock contention on mobile & PWA
       startRecognition();
-      // Fire visual volume meter capture in parallel, provided we didn't instantly fallback
-      if (!useFallbackRef.current) {
-        startAudioCapture().catch(() => {});
-      }
     }
-  }, [supported, startAudioCapture, startRecognition, startFallbackRecording]);
+  }, [supported, webSpeechSupported, startRecognition, startFallbackRecording]);
 
   const stop = useCallback(() => {
     wantListeningRef.current = false;
@@ -642,6 +639,7 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
       if (startRetryTimerRef.current) clearTimeout(startRetryTimerRef.current);
+      if (voiceErrorTimerRef.current) clearTimeout(voiceErrorTimerRef.current);
       destroyRecognition();
       stopAudioCapture();
     };

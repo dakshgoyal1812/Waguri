@@ -354,12 +354,18 @@ app.get('/api/game/state/:sessionId', async (req, res, next) => {
 // -> Groq's OpenAI-compatible Whisper endpoint. Key stays server-side.
 app.post('/api/stt', async (req, res, next) => {
   try {
-    const groqKey =
-      (collectKeys ? collectKeys('groq')[0] : null) ||
-      process.env.GROQ_API_KEY ||
-      process.env.GROQ_API_KEYS?.split(',')[0]?.trim() ||
-      process.env.GROQ_API_KEY_1?.trim();
-    if (!groqKey) {
+    const groqKeys = [];
+    if (typeof collectKeys === 'function') groqKeys.push(...collectKeys('groq'));
+    if (process.env.GROQ_API_KEY && !groqKeys.includes(process.env.GROQ_API_KEY)) groqKeys.push(process.env.GROQ_API_KEY);
+    if (process.env.GROQ_API_KEY_1 && !groqKeys.includes(process.env.GROQ_API_KEY_1)) groqKeys.push(process.env.GROQ_API_KEY_1);
+    if (process.env.GROQ_API_KEYS) {
+      for (const k of process.env.GROQ_API_KEYS.split(',')) {
+        const t = k.trim();
+        if (t && !groqKeys.includes(t)) groqKeys.push(t);
+      }
+    }
+
+    if (groqKeys.length === 0) {
       return res.status(503).json({ error: 'STT fallback unavailable: configure a GROQ API key' });
     }
 
@@ -378,24 +384,40 @@ app.post('/api/stt', async (req, res, next) => {
 
     const filename = req.headers['x-file-name'] || 'audio.webm';
     const ctype = req.headers['x-audio-type'] || req.headers['content-type'] || 'audio/webm';
-    const form = new FormData();
-    form.append('file', new Blob([audioBuffer], { type: ctype }), filename);
-    form.append('model', process.env.STT_MODEL || 'whisper-large-v3');
-    if (req.headers['x-audio-lang']) {
-      form.append('language', req.headers['x-audio-lang']);
+    const lang = req.headers['x-audio-lang'];
+    const model = process.env.STT_MODEL || 'whisper-large-v3-turbo';
+
+    let lastError = null;
+    for (const key of groqKeys) {
+      try {
+        const form = new FormData();
+        form.append('file', new Blob([audioBuffer], { type: ctype }), filename);
+        form.append('model', model);
+        if (lang) form.append('language', lang);
+
+        const upstream = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${key}` },
+          body: form,
+        });
+
+        if (upstream.ok) {
+          const data = await upstream.json();
+          return res.json({ text: (data.text || '').trim() });
+        }
+
+        const errText = await upstream.text().catch(() => '');
+        lastError = `STT upstream ${upstream.status}: ${errText.slice(0, 200)}`;
+        if (upstream.status === 429 || upstream.status >= 500) {
+          continue; // Try next key
+        }
+        break;
+      } catch (err) {
+        lastError = err.message;
+      }
     }
 
-    const upstream = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${groqKey}` },
-      body: form,
-    });
-    if (!upstream.ok) {
-      const errText = await upstream.text().catch(() => '');
-      return res.status(upstream.status).json({ error: `STT upstream ${upstream.status}: ${errText.slice(0, 200)}` });
-    }
-    const data = await upstream.json();
-    res.json({ text: (data.text || '').trim() });
+    res.status(502).json({ error: lastError || 'STT transcription failed across all keys' });
   } catch (e) { next(e); }
 });
 
