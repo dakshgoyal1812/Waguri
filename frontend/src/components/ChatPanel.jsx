@@ -205,31 +205,6 @@ export default function ChatPanel({
             </button>
           )}
         </form>
-
-        {(isPlayingAudio || isListening || interim || isProcessing) && (
-          <div className="voice-caption" role="status">
-            <div className="voice-caption-indicator">
-              <span className={`voice-dot ${isPlayingAudio ? 'speaking' : isSpeaking ? 'active' : ''}`} />
-              <span className="voice-caption-label">
-                {isPlayingAudio
-                  ? `${persona?.name || 'Waguri'} is speaking…`
-                  : isProcessing
-                  ? 'Transcribing…'
-                  : isSpeaking
-                  ? 'Hearing your voice…'
-                  : 'Mic active — speak anytime'}
-              </span>
-            </div>
-            {isListening && !isPlayingAudio && (
-              <div className="mic-volume-bars" title={`Volume: ${volumeLevel}%`}>
-                <span style={{ height: `${Math.max(4, Math.min(14, (volumeLevel / 100) * 14))}px` }} />
-                <span style={{ height: `${Math.max(4, Math.min(18, (volumeLevel / 100) * 18))}px` }} />
-                <span style={{ height: `${Math.max(4, Math.min(14, (volumeLevel / 100) * 14))}px` }} />
-              </div>
-            )}
-            {interim && <span className="voice-caption-text">"{interim}"</span>}
-          </div>
-        )}
         {voiceError && (
           <div className="voice-caption voice-error" role="alert">
             <span>⚠️ {voiceError}</span>
