@@ -31,3 +31,4 @@ Thumbs.db
 # Temporary/scratch files
 .system_generated/
 scratch/
+*.mp4
