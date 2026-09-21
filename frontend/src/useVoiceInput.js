@@ -125,10 +125,9 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
       streamRef.current = stream;
 
       // Initialize Web Audio API Analyser for real-time visual feedback
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) {
-        const ctx = new AudioCtx();
-        audioCtxRef.current = ctx;
+      // (The context itself is created synchronously in start() to capture user gesture)
+      if (audioCtxRef.current) {
+        const ctx = audioCtxRef.current;
         if (ctx.state === 'suspended') {
           ctx.resume().catch(() => {});
         }
@@ -509,6 +508,17 @@ export function useVoiceInput({ onFinalTranscript, onSpeechStart, enabled, pause
     if (!supported) return;
     setVoiceError(null);
     wantListeningRef.current = true;
+
+    // SYNCHRONOUSLY initialize/resume AudioContext to capture the user gesture on mobile PWAs
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioCtx();
+      }
+      if (audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+    }
 
     // Acquire audio stream & start volume meter
     await startAudioCapture();

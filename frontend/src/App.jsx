@@ -193,7 +193,14 @@ export default function App() {
     if (isSpeaking) {
       handleStopAudio();
     }
-    setHandsFree((h) => !h);
+    const willBeEnabled = !handsFree;
+    setHandsFree(willBeEnabled);
+    if (willBeEnabled) {
+      // Synchronously call start() on user interaction to unlock AudioContext on iOS/mobile PWAs
+      voice.start();
+    } else {
+      voice.stop();
+    }
   };
 
   const audioRef = useRef(null);
