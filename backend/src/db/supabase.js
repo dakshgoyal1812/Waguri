@@ -21,7 +21,6 @@ export function createSupabaseStorage(databaseUrl) {
           );
           insert into allowed_users (email, added_by)
           values
-            ('dakshgoyal1234567@gmail.com', 'system'),
             ('dakshgoyal1812@gmail.com', 'system'),
             ('goyaldaksh284@gmail.com', 'system')
           on conflict (email) do nothing;
