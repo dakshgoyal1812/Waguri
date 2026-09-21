@@ -567,19 +567,6 @@ export default function App() {
         />
       </aside>
 
-      {/* bottom-left: add / switch VRM avatar — same stage capabilities for
-          any model (talking, emotions, gaze, blinking all carry over) */}
-      <button
-        type="button"
-        className="vrm-fab"
-        onClick={() => setIsVrmPickerOpen(true)}
-        title="Add or change VRM avatar"
-        aria-label="Add or change VRM avatar"
-      >
-        <UserRound size={19} />
-        <span className="vrm-fab__label">Avatar</span>
-      </button>
-
       {/* radial action menu (bottom-right, social-clock style):
           collapsed to one trigger; expands into a colored button fan on
           hover (desktop) or trigger tap (touch), spinning out like a clock */}
@@ -620,8 +607,8 @@ export default function App() {
           <button
             className="social-fab__button bg"
             onClick={() => handleFabAction(() => setIsBgPickerOpen(true))}
-            title="Stage background"
-            aria-label="Stage background"
+            title="Stage background & Avatar"
+            aria-label="Stage background & Avatar"
           >
             <ImageIcon size={19} />
           </button>
@@ -644,16 +631,8 @@ export default function App() {
         onClose={() => setIsBgPickerOpen(false)}
         background={background}
         onApply={setBackground}
-      />
-
-      <VRMPicker
-        isOpen={isVrmPickerOpen}
-        onClose={() => setIsVrmPickerOpen(false)}
-        activeId={activeVrmId}
-        onSelect={(id) => {
-          setActiveVrmId(id);
-          setIsVrmPickerOpen(false);
-        }}
+        activeVrmId={activeVrmId}
+        onSelectVrm={(id) => setActiveVrmId(id)}
       />
 
       <AdminPortal

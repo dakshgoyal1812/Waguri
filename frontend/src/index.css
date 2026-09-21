@@ -1033,6 +1033,38 @@ body {
 }
 .pool-table td { padding: 7px 8px; border-bottom: 1px solid var(--border-glass); color: var(--text-secondary); }
 
+/* ============ background & avatar picker modal tabs ============ */
+.bg-avatar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-hover);
+  padding: 3px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-glass);
+}
+.bg-avatar-tab {
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all 0.2s ease;
+}
+.bg-avatar-tab.active {
+  background: var(--surface-solid);
+  color: #0284c7;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.vrm-fab {
+  display: none !important;
+}
+
 /* ============ background picker modal ============ */
 .bg-picker-modal {
   width: min(620px, calc(100vw - 24px));
