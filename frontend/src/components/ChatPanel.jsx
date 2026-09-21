@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, MessageCircle, Mic, MicOff } from 'lucide-react';
+import { Send, MessageCircle, Mic, MicOff, Paperclip } from 'lucide-react';
 
 const SUGGESTIONS = [
   'What bakery sweets do you recommend today? 🍰',
@@ -79,56 +79,11 @@ export default function ChatPanel({
 
   return (
     <div className="chat-section">
-      {/* Header */}
-      <div className="chat-header">
-        <div className="persona-mini-card">
-          <div className="persona-avatar-sm">
-            <img src="/logo.png" alt="Waguri" className="persona-avatar-img" />
-          </div>
-          <div className="persona-meta">
-            <h2>{persona?.name || 'Waguri'}</h2>
-          </div>
-        </div>
-      </div>
-
-      {/* Messages */}
+      {/* Messages Stream */}
       <div className="chat-messages" ref={messagesListRef}>
         {messages.length === 0 && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              textAlign: 'center',
-              color: 'var(--text-secondary)',
-              gap: '12px',
-              padding: '20px',
-            }}
-          >
-            <div
-              style={{
-                width: '54px',
-                height: '54px',
-                borderRadius: '50%',
-                background: 'rgba(244, 114, 182, 0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--accent-pink)',
-              }}
-            >
-              <MessageCircle size={26} />
-            </div>
-            <div>
-              <p style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                Say hello to Waguri!
-              </p>
-              <p style={{ fontSize: '0.8rem' }}>
-                She remembers your conversations with RAG long-term memory.
-              </p>
-            </div>
+          <div className="chat-empty-hint">
+            <p>Say hello to Waguri ✨</p>
           </div>
         )}
 
@@ -137,20 +92,24 @@ export default function ChatPanel({
 
           return (
             <div key={idx} className={`message-bubble-wrapper ${isUser ? 'user' : 'assistant'}`}>
-              <div className="message-meta">
-                <span>{isUser ? 'You' : persona?.name || 'Waguri'}</span>
+              {!isUser && msg.statusText && (
+                <div className="thinking-status-line">{msg.statusText}</div>
+              )}
+              <div
+                className="message-bubble"
+                onClick={() => !isUser && msg.content && onPlayAudio?.(msg.audio_url, msg.emotion, msg.content)}
+                title={!isUser ? "Tap to replay voice" : undefined}
+              >
+                {msg.content}
               </div>
-
-              <div className="message-bubble">{msg.content}</div>
             </div>
           );
         })}
 
         {isLoading && (
           <div className="message-bubble-wrapper assistant chat-heart-loading-wrapper" aria-live="polite">
-            <div className="message-meta">
-              <span>{persona?.name || 'Waguri'}</span>
-              <span className="thinking-text">{THINKING_LINES[thinkingIdx % THINKING_LINES.length]}</span>
+            <div className="thinking-status-line">
+              {THINKING_LINES[thinkingIdx % THINKING_LINES.length]}
             </div>
             <div className="message-bubble chat-heart-bubble">
               <svg
@@ -190,20 +149,40 @@ export default function ChatPanel({
 
       {/* Quick Prompts & Input */}
       <div className="chat-input-area">
-        <div className="quick-prompts">
-          {SUGGESTIONS.map((item, idx) => (
-            <button
-              key={idx}
-              className="quick-pill"
-              onClick={() => onSendMessage(item)}
-              disabled={isLoading}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
+        {messages.length <= 1 && (
+          <div className="quick-prompts">
+            {SUGGESTIONS.map((item, idx) => (
+              <button
+                key={idx}
+                className="quick-pill"
+                onClick={() => onSendMessage(item)}
+                disabled={isLoading}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        )}
 
         <form className="input-bar" onSubmit={handleSubmit}>
+          <button
+            type="button"
+            className="attachment-btn"
+            title="Attachment"
+            aria-label="Attachment"
+            tabIndex={-1}
+          >
+            <Paperclip size={18} />
+          </button>
+          <input
+            type="text"
+            className="chat-input"
+            placeholder={isListening ? 'Listening… or type a message' : 'Say something…'}
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isLoading}
+          />
           {micSupported && (
             <button
               type="button"
@@ -223,23 +202,16 @@ export default function ChatPanel({
               {handsFree ? <Mic size={16} /> : <MicOff size={16} />}
             </button>
           )}
-          <input
-            type="text"
-            className="chat-input"
-            placeholder={isListening ? 'Listening… or type a message' : 'Say something…'}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isLoading}
-          />
-          <button
-            type="submit"
-            className="send-btn"
-            disabled={!inputText.trim() || isLoading}
-            aria-label="Send message"
-          >
-            <Send size={16} />
-          </button>
+          {inputText.trim() && (
+            <button
+              type="submit"
+              className="send-btn"
+              disabled={!inputText.trim() || isLoading}
+              aria-label="Send message"
+            >
+              <Send size={15} />
+            </button>
+          )}
         </form>
 
         {(isPlayingAudio || isListening || interim || isProcessing) && (

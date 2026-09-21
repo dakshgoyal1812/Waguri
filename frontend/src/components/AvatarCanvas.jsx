@@ -457,18 +457,10 @@ export default function AvatarCanvas({
     const getTargetCameraParams = (w, h, isChatOpen, tier) => {
       const currentTier = tier || getDeviceTier();
       if (currentTier === 'mobile') {
-        if (isChatOpen) {
-          // Phone with chat bottom sheet open:
-          // Position Waguri in top ~48% open screen above the chat card
-          return {
-            pos: new THREE.Vector3(0, 1.25, 1.70),
-            look: new THREE.Vector3(0, 1.05, 0),
-            fov: 33,
-          };
-        }
-        // Phone with chat closed: balanced portrait view
+        // Phone with floating transparent chat overlay:
+        // Balanced portrait framing centered nicely behind the floating messages
         return {
-          pos: new THREE.Vector3(0, 0.98, 2.30),
+          pos: new THREE.Vector3(0, 1.00, 2.25),
           look: new THREE.Vector3(0, 0.94, 0),
           fov: 34,
         };
