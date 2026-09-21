@@ -222,7 +222,7 @@ body {
 }
 .chat-card.open {
   opacity: 1;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 /* wrapper for ChatPanel internals */
@@ -231,7 +231,7 @@ body {
   flex-direction: column;
   height: 100%;
   width: 100%;
-  pointer-events: none;
+  pointer-events: auto;
 }
 .chat-header {
   display: none;
@@ -243,18 +243,39 @@ body {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 80px 18px 12px;
+  padding: 80px 18px 14px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: 12px;
-  scrollbar-width: none;
   pointer-events: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(2, 132, 199, 0.25) transparent;
   /* AIRI fade-out gradient mask so older messages softly vanish at the top */
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.25) 8%, black 22%, black 100%);
   mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.25) 8%, black 22%, black 100%);
 }
-.chat-messages::-webkit-scrollbar { display: none; }
+.chat-messages::-webkit-scrollbar {
+  width: 5px;
+}
+.chat-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-messages::-webkit-scrollbar-thumb {
+  background: rgba(2, 132, 199, 0.25);
+  border-radius: 99px;
+}
+.chat-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(2, 132, 199, 0.45);
+}
+
+.chat-spacer {
+  margin-top: auto;
+  min-height: 20px;
+  flex-shrink: 0;
+}
 
 .chat-empty-hint {
   display: none;
