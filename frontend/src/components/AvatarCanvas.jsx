@@ -231,6 +231,7 @@ export default function AvatarCanvas({
   const vrmRef = useRef(null);
   const sceneRef = useRef(null);
   const roomGroupRef = useRef(null);
+  const roomSceneRef = useRef(null);
   const showRoomRef = useRef(showRoom);
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
@@ -246,9 +247,6 @@ export default function AvatarCanvas({
     showRoomRef.current = showRoom;
     if (roomGroupRef.current) {
       roomGroupRef.current.visible = Boolean(showRoom);
-    }
-    if (sceneRef.current) {
-      sceneRef.current.background = showRoom ? new THREE.Color(0xfef9c3) : null;
     }
   }, [showRoom]);
 
@@ -479,8 +477,21 @@ export default function AvatarCanvas({
     // Responsive camera framing for phones vs tablets vs desktop
     const getTargetCameraParams = (w, h, isChatOpen, tier) => {
       const currentTier = tier || getDeviceTier();
-      if (currentTier === 'mobile') {
+      const isRoom = Boolean(showRoomRef.current);
+      const aspect = w / h;
+
+      if (currentTier === 'mobile' || aspect < 0.75) {
         // Phone with floating transparent chat overlay:
+        if (isRoom) {
+          // Optimized for 3D room stage on phone portrait:
+          // Slightly pulled back with gentle angle so the living room couch,
+          // floor, and decor surround her naturally instead of appearing cramped/zoomed in.
+          return {
+            pos: new THREE.Vector3(0, 1.02, 2.42),
+            look: new THREE.Vector3(0, 0.90, 0),
+            fov: 37,
+          };
+        }
         // Balanced portrait framing centered nicely behind the floating messages
         return {
           pos: new THREE.Vector3(0, 1.00, 2.25),
@@ -577,13 +588,17 @@ export default function AvatarCanvas({
     roomGroupRef.current = roomGroup;
     scene.add(roomGroup);
 
-    // Warm ambient and accent lights specifically for the room stage
-    const roomAmbient = new THREE.AmbientLight(0xffeedd, 0.65);
+    // Warm ambient and accent lights specifically for the room stage (tuned for mobile brightness & OLED clarity)
+    const roomAmbient = new THREE.AmbientLight(0xfff2e6, 0.85);
     roomGroup.add(roomAmbient);
 
-    const roomWarmPoint = new THREE.PointLight(0xffbe85, 1.4, 9);
-    roomWarmPoint.position.set(0, 2.6, 0.4);
+    const roomWarmPoint = new THREE.PointLight(0xffd1a4, 1.5, 10);
+    roomWarmPoint.position.set(0, 2.7, 0.2);
     roomGroup.add(roomWarmPoint);
+
+    const roomFillLight = new THREE.DirectionalLight(0xfff8f0, 0.45);
+    roomFillLight.position.set(0, 2.0, 2.0);
+    roomGroup.add(roomFillLight);
 
     // Soft grounded contact shadow under avatar's feet
     const shadowGeo = new THREE.PlaneGeometry(0.85, 0.85);
@@ -608,6 +623,27 @@ export default function AvatarCanvas({
     contactShadow.position.set(0, 0.005, 0);
     roomGroup.add(contactShadow);
 
+    // Responsive room layout adapter: scales and depths the room for mobile portrait
+    // so couches, walls, and windows fit cleanly on phone screens instead of blowing up.
+    const applyRoomLayout = (w, h, tier) => {
+      const room = roomSceneRef.current;
+      if (!room) return;
+      const aspect = w / h;
+      const currentTier = tier || getDeviceTier();
+      if (currentTier === 'mobile' || aspect < 0.75) {
+        // Phone portrait: Scale room down and push it back into depth
+        room.scale.setScalar(0.52);
+        room.position.set(0, -0.01, -1.05);
+      } else if (currentTier === 'tablet' || aspect < 1.2) {
+        room.scale.setScalar(0.75);
+        room.position.set(0, 0, -0.45);
+      } else {
+        // Desktop landscape: natural 1:1 scale (looks great on laptop)
+        room.scale.setScalar(1.0);
+        room.position.set(0, 0, 0);
+      }
+    };
+
     // Load the baked 3D sitting room
     const roomLoader = new GLTFLoader();
     roomLoader.load(
@@ -615,15 +651,21 @@ export default function AvatarCanvas({
       (gltf) => {
         if (disposed) return;
         const roomScene = gltf.scene;
+        roomSceneRef.current = roomScene;
         roomScene.traverse((obj) => {
           if (obj.isMesh && obj.material) {
             obj.material.side = THREE.DoubleSide;
             if (obj.material.map) {
               obj.material.map.colorSpace = THREE.SRGBColorSpace;
             }
+            if (obj.material.isMeshStandardMaterial) {
+              obj.material.roughness = 0.95;
+              obj.material.metalness = 0.0;
+            }
           }
         });
         roomGroup.add(roomScene);
+        applyRoomLayout(width, height, tierRef.current);
         roomGroup.visible = showRoomRef.current;
       },
       undefined,
@@ -634,9 +676,6 @@ export default function AvatarCanvas({
 
     // Set initial visibility
     roomGroup.visible = showRoomRef.current;
-    if (showRoomRef.current) {
-      scene.background = new THREE.Color(0xfef9c3);
-    }
 
     let disposed = false;
     let cleanupModel = null;
@@ -864,6 +903,7 @@ export default function AvatarCanvas({
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPr));
+      applyRoomLayout(width, height, tierRef.current);
     };
 
     let resizeObserver = null;
@@ -1383,6 +1423,7 @@ export default function AvatarCanvas({
     return () => {
       disposed = true;
       roomGroupRef.current = null;
+      roomSceneRef.current = null;
       sceneRef.current = null;
       cancelAnimationFrame(animId);
       resizeObserver?.disconnect();
