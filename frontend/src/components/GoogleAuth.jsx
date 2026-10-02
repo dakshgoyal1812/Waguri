@@ -356,13 +356,13 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         return;
       }
       setPendingEmail(cleanEmail);
-      setStep('verify_otp');
+      setStep('magic_link_sent');
       setSuccessMsg(
-        `One-time code & link sent to ${cleanEmail} via Brevo! Check your inbox.`
+        `Magic login link sent to ${cleanEmail} via Brevo! Check your inbox.`
       );
       setCooldown(60);
     } catch (err) {
-      setErrorMsg(err.message || 'Failed to send one-time code.');
+      setErrorMsg(err.message || 'Failed to send magic link.');
     } finally {
       setSigningIn(false);
     }
@@ -599,7 +599,92 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
     );
   }
 
-  // State: Email Verification Pending (Brevo SMTP dispatched)
+  // State: Magic Link Dispatched (Link-only flow)
+  if (step === 'magic_link_sent') {
+    return (
+      <div className="auth-step-container">
+        <div className="auth-envelope-pulse">
+          <Send size={30} className="text-pink-500" />
+        </div>
+        <div className="auth-brevo-tag">
+          <Sparkles size={13} />
+          <span>Brevo SMTP Active</span>
+        </div>
+        <h3 className="auth-card-title">Magic Link Sent! ✉️</h3>
+        <p className="auth-card-description">
+          We sent a secure 1-click sign-in link to:
+          <br />
+          <strong className="auth-highlight-email">{pendingEmail || email}</strong>
+        </p>
+
+        <div className="auth-magic-link-box">
+          <div className="auth-magic-link-item">
+            <CheckCircle2 size={16} className="text-emerald-500" style={{ marginTop: '2px', flexShrink: 0 }} />
+            <span>Open your email from <strong>Brevo</strong> and click <strong>"Sign In to Waguri"</strong>.</span>
+          </div>
+          <div className="auth-magic-link-item">
+            <Sparkles size={16} className="text-purple-500" style={{ marginTop: '2px', flexShrink: 0 }} />
+            <span>No code or password needed. This page will automatically unlock once you click the link!</span>
+          </div>
+        </div>
+
+        <div className="auth-waiting-badge">
+          <div className="auth-pulse-dot" />
+          <span>Waiting for you to click the link in your email…</span>
+        </div>
+
+        {errorMsg && <div className="auth-msg-error">{errorMsg}</div>}
+        {successMsg && <div className="auth-msg-success">{successMsg}</div>}
+
+        <div className="auth-verification-footer">
+          <button
+            type="button"
+            className="auth-link-btn"
+            onClick={async () => {
+              if (cooldown > 0) return;
+              try {
+                setSigningIn(true);
+                const { error } = await signInWithOtp(pendingEmail);
+                if (error) setErrorMsg(error.message);
+                else {
+                  setSuccessMsg(`Fresh magic link dispatched to ${pendingEmail}!`);
+                  setCooldown(60);
+                }
+              } catch (err) {
+                setErrorMsg(err.message);
+              } finally {
+                setSigningIn(false);
+              }
+            }}
+            disabled={cooldown > 0 || signingIn}
+          >
+            <RefreshCw size={13} className={signingIn ? 'spin-icon' : ''} />
+            <span>
+              {cooldown > 0 ? `Resend link in ${cooldown}s` : 'Resend magic link'}
+            </span>
+          </button>
+          <span className="auth-dot-sep">•</span>
+          <button
+            type="button"
+            className="auth-link-btn text-muted"
+            onClick={() => {
+              setStep('signin');
+              setErrorMsg('');
+              setSuccessMsg('');
+            }}
+          >
+            ← Back to Sign In
+          </button>
+        </div>
+
+        <p className="auth-spam-hint">
+          💡 If you don't see it within a minute, check your <strong>Spam / Junk</strong> folder.
+        </p>
+      </div>
+    );
+  }
+
+  // State: Email Verification Pending (Brevo SMTP dispatched for New Signups)
   if (step === 'verify_otp') {
     return (
       <div className="auth-step-container">
@@ -782,7 +867,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
             setSuccessMsg('');
           }}
         >
-          Magic Code
+          Magic Link
         </button>
       </div>
 
@@ -893,11 +978,11 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         </form>
       )}
 
-      {/* TAB 3: Magic Code / Link (Passwordless via Brevo) */}
+      {/* TAB 3: Magic Link (Passwordless via Brevo) */}
       {step === 'otp_login' && (
         <form onSubmit={handleMagicLink} className="auth-form">
           <div className="auth-tab-intro">
-            <span>🔑 Sign in password-free. We'll email you a one-time code or link.</span>
+            <span>✉️ Sign in password-free. We'll send a 1-click magic link to your email.</span>
           </div>
 
           <div className="auth-input-group">
@@ -914,7 +999,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
 
           <button type="submit" className="auth-primary-btn" disabled={signingIn}>
             {signingIn ? <RefreshCw size={16} className="spin-icon" /> : <Send size={16} />}
-            <span>Send One-Time Code / Link</span>
+            <span>Send Magic Link</span>
           </button>
         </form>
       )}
