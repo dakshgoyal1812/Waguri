@@ -63,7 +63,10 @@ export const config = {
   push: {
     vapidPublicKey: (process.env.VAPID_PUBLIC_KEY || 'BK_Ko-huYBFhDJdeAfKiWAL6y5ByzkMG5NLJljpNNbHP3YktTGeor2KllfEJ__-Gog9hTwTz9LemAM3_LHZI09g').trim(),
     vapidPrivateKey: (process.env.VAPID_PRIVATE_KEY || 'FjzdnxU4p1t91xtDwXK-GObaVhFFpDuPDpE0jrUllLg').trim(),
-    vapidSubject: (process.env.VAPID_SUBJECT || 'mailto:dakshgoyal1812@gmail.com').trim(),
+    vapidSubject: (() => {
+      const s = (process.env.VAPID_SUBJECT || 'mailto:dakshgoyal1812@gmail.com').trim();
+      return (s.startsWith('mailto:') || s.startsWith('https://') || s.startsWith('http://')) ? s : `mailto:${s}`;
+    })(),
   },
 
   // TTS provider chain, first that succeeds wins (Edge TTS / Azure / Fish Audio / Gemini / Google).
