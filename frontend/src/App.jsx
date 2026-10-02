@@ -423,7 +423,7 @@ export default function App() {
           </div>
           <div className="auth-gate-spinner" />
           <h2 className="auth-gate-title">WAGURI</h2>
-          <p className="auth-gate-subtitle">Verifying Google authorization…</p>
+          <p className="auth-gate-subtitle">Verifying authorization…</p>
           {/* Silent listener checking session */}
           <div style={{ display: 'none' }}>
             <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} />
@@ -449,13 +449,13 @@ export default function App() {
             <span className="auth-gate-badge">Private Access</span>
           </div>
           <p className="auth-gate-subtitle">
-            Welcome to Waguri! Access is private and restricted. Please sign in with your authorized Google account to continue.
+            Welcome to Waguri! Sign in with your authorized email or Google account to continue.
           </p>
           <div className="auth-gate-btn-wrapper">
             <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} />
           </div>
           <div className="auth-gate-footer">
-            <span>🔒 Authorized accounts only</span>
+            <span>🔒 Authorized accounts • Email verified via Brevo SMTP</span>
           </div>
         </div>
       </div>

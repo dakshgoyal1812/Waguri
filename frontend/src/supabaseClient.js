@@ -108,6 +108,87 @@ export async function verifyEmailAccess(email) {
   return isEmailAllowed(clean);
 }
 
+export async function signUpWithEmail(email, password) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase credentials missing: Please verify SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
+  }
+  return await supabase.auth.signUp({
+    email: email.trim(),
+    password,
+    options: {
+      emailRedirectTo: window.location.origin,
+    },
+  });
+}
+
+export async function signInWithEmail(email, password) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase credentials missing: Please verify SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
+  }
+  return await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  });
+}
+
+export async function signInWithOtp(email) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase credentials missing: Please verify SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
+  }
+  return await supabase.auth.signInWithOtp({
+    email: email.trim(),
+    options: {
+      emailRedirectTo: window.location.origin,
+    },
+  });
+}
+
+export async function verifyEmailOtp(email, token, type = 'signup') {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase credentials missing: Please verify SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
+  }
+  const cleanEmail = email.trim();
+  const cleanToken = token.trim();
+  // Attempt with specified type first ('signup', 'email', or 'magiclink')
+  let res = await supabase.auth.verifyOtp({
+    email: cleanEmail,
+    token: cleanToken,
+    type,
+  });
+  if (res.error && type === 'signup') {
+    // Fallback: in case Supabase issued the token as an email/magiclink token
+    const fallback = await supabase.auth.verifyOtp({
+      email: cleanEmail,
+      token: cleanToken,
+      type: 'email',
+    });
+    if (!fallback.error) return fallback;
+  }
+  return res;
+}
+
+export async function resendVerificationEmail(email) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase credentials missing: Please verify SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
+  }
+  return await supabase.auth.resend({
+    type: 'signup',
+    email: email.trim(),
+    options: {
+      emailRedirectTo: window.location.origin,
+    },
+  });
+}
+
+export async function resetPasswordForEmail(email) {
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase credentials missing: Please verify SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
+  }
+  return await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: window.location.origin,
+  });
+}
+
 export async function signInWithGoogle() {
   if (!isSupabaseConfigured) {
     alert(
@@ -134,3 +215,4 @@ export async function signOutUser() {
     console.error('Sign Out Error:', error);
   }
 }
+
