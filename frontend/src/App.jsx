@@ -169,6 +169,20 @@ export default function App() {
     return () => { cancelled = true; };
   }, [activeVrmId]);
 
+  // Radial action menu (social-fab): open state + refs
+  const [fabOpen, setFabOpen] = useState(false);
+  const fabMenuRef = useRef(null);
+  const dialRef = useRef(null);
+
+  useEffect(() => {
+    if (!fabOpen) return;
+    const onOutside = (e) => {
+      if (fabMenuRef.current && !fabMenuRef.current.contains(e.target)) setFabOpen(false);
+    };
+    document.addEventListener('pointerdown', onOutside);
+    return () => document.removeEventListener('pointerdown', onOutside);
+  }, [fabOpen]);
+
   // 360° Interactive Rotary Wheel / Dial state for action buttons
   const [dialRotation, setDialRotation] = useState(0);
   const [isDialDragging, setIsDialDragging] = useState(false);
@@ -291,18 +305,6 @@ export default function App() {
       dialDragRef.current.rafId = requestAnimationFrame(step);
     }
   };
-
-  // Radial action menu (social-fab): open state + close on outside tap
-  const [fabOpen, setFabOpen] = useState(false);
-  const fabMenuRef = useRef(null);
-  useEffect(() => {
-    if (!fabOpen) return;
-    const onOutside = (e) => {
-      if (fabMenuRef.current && !fabMenuRef.current.contains(e.target)) setFabOpen(false);
-    };
-    document.addEventListener('pointerdown', onOutside);
-    return () => document.removeEventListener('pointerdown', onOutside);
-  }, [fabOpen]);
 
   // Run a menu action, then fold the fan away — unless user was spinning the dial!
   const handleFabAction = (fn) => {
