@@ -32,3 +32,8 @@ Thumbs.db
 .system_generated/
 scratch/
 *.mp4
+
+# Root VRM/VRoid download drop files (bundled versions reside in frontend/public/)
+/*.vrm
+/*.vroid
+
