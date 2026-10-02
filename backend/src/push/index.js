@@ -4,16 +4,20 @@ import webpush from 'web-push';
 import { config } from '../config.js';
 
 export function createPushService({ storage, callLLM, getPersona }) {
-  if (config.push.vapidPublicKey && config.push.vapidPrivateKey) {
+  const rawPublic = (config.push.vapidPublicKey || '').trim().replace(/^["']|["']$/g, '');
+  const rawPrivate = (config.push.vapidPrivateKey || '').trim().replace(/^["']|["']$/g, '');
+  let subject = (config.push.vapidSubject || '').trim().replace(/^["']|["']$/g, '');
+  if (!subject) subject = 'mailto:dakshgoyal1812@gmail.com';
+  if (!subject.startsWith('mailto:') && !subject.startsWith('http://') && !subject.startsWith('https://')) {
+    subject = `mailto:${subject}`;
+  }
+
+  if (rawPublic && rawPrivate) {
     try {
-      webpush.setVapidDetails(
-        config.push.vapidSubject,
-        config.push.vapidPublicKey,
-        config.push.vapidPrivateKey
-      );
-      console.log('[push] VAPID details configured successfully');
+      webpush.setVapidDetails(subject, rawPublic, rawPrivate);
+      console.log('[push] VAPID details configured successfully with subject:', subject);
     } catch (e) {
-      console.warn('[push] failed to set VAPID details:', e.message);
+      console.error('[push] failed to set VAPID details:', e.message);
     }
   }
 
