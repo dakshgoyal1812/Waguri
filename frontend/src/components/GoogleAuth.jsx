@@ -244,6 +244,12 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
           setCooldown(45);
           return;
         }
+        if (error.message.toLowerCase().includes('invalid login credentials')) {
+          setErrorMsg(
+            'Invalid login credentials. If you originally signed in with Google, click "Sign In with Google" below, or use "Create Account" to set up a new password.'
+          );
+          return;
+        }
         setErrorMsg(error.message);
         return;
       }
