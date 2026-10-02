@@ -136,8 +136,8 @@ export function createPushService({ storage, callLLM, getPersona, sendToSub = nu
           `  - "Good morning Daksh! Nashta kar liya na? ✨"`,
           `  - "Lunch break hua ya abhi bhi busy ho? Thoda aaram kar lo na!"`,
           `  - "Arre suno! Shaam ko bakery ke naye pastries try karein?"`,
-          `  - "Good night baby, time se so jana! Sweet dreams ❤️"`,
-          `Only return the single sentence text, nothing else. No emotion tags.`,
+          `  - "Good night ${partner}, time se so jana! Sweet dreams ❤️"`,
+          `Only return the single sentence text, nothing else. No emotion tags. No repetitive pet names like baby.`,
         ].join('\n');
 
         const res = await callLLM([{ role: 'system', content: prompt }], { temperature: 0.8 });

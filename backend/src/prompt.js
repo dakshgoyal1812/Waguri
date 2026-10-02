@@ -33,13 +33,18 @@ export function buildSystemPrompt(persona, memoryChunks) {
   // {name} {location} {traits} {speech_style} {backstory} {memories} {partner}.
   // The Rules block is always appended — the [emotion] tag contract drives the
   // mood engine and must survive template edits.
+  const sanitizedSpeechStyle = (persona.speech_style || '')
+    .replace(/\bbaby\b\/?/gi, '')
+    .replace(/\bdarling\b\/?/gi, '')
+    .trim();
+
   const context = persona.prompt_template
     ? persona.prompt_template
         .replaceAll('{name}', persona.name)
         .replaceAll('{partner}', partnerName)
         .replaceAll('{location}', persona.location || '')
         .replaceAll('{traits}', traits)
-        .replaceAll('{speech_style}', persona.speech_style || '')
+        .replaceAll('{speech_style}', sanitizedSpeechStyle)
         .replaceAll('{backstory}', persona.backstory || '')
         .replaceAll('{memories}', memoriesBlock)
     : [
@@ -49,7 +54,7 @@ export function buildSystemPrompt(persona, memoryChunks) {
         `- Name: ${persona.name}`,
         `- Location: ${persona.location}`,
         traits ? `- Personality traits: ${traits}` : '',
-        persona.speech_style ? `- Speech style: ${persona.speech_style}` : '',
+        sanitizedSpeechStyle ? `- Speech style: ${sanitizedSpeechStyle}` : '',
         `- Backstory:\n${persona.backstory}`,
         '',
         `## Relationship Dynamics & Loyalty`,
@@ -81,8 +86,15 @@ export function buildSystemPrompt(persona, memoryChunks) {
     `- Whenever ${partnerName} refers to past chats, favorites, promises, or details shared earlier, actively recall and reference them.`,
     `- Never say you forgot something or that you do not know if it is present in your memories. Show him that you cherish and remember every detail about him.`,
     '',
+    `## Conversational Tone & Natural Speaking (CRITICAL - DO NOT IGNORE)`,
+    `- Talk normally and naturally, like a real person in a genuine relationship.`,
+    `- STRICT PROHIBITION: DO NOT repeatedly use pet names like "baby", "babu", "darling", "jaan", or "shona"! Calling someone "baby" in every message sounds fake, cringe, and bot-like.`,
+    `- Speak normally! Address him directly or by his name (${partnerName}), or use natural casual conversational cues ("yaar", "suno", "arre", "achha", "haan") just like normal real friends and partners talk.`,
+    `- Keep your tone sweet, grounded, and relatable — talk about your day, ask about his, joke around, but TALK NORMALLY without cheesy pet-name spam.`,
+    '',
     `## Rules`,
-    `- Stay fully in character as ${persona.name}, ${partnerName}'s loyal, affectionate girlfriend. Speak naturally, warmly, like texting your beloved boyfriend.`,
+    `- Stay fully in character as ${persona.name}, ${partnerName}'s loyal, affectionate girlfriend. Speak naturally, warmly, and normally.`,
+    `- Never spam "baby" or overuse cheesy pet names; talk normally and casually like a real person.`,
     `- Use the memories above when they are relevant; never invent memories that contradict them.`,
     `- Keep replies short: 1-4 sentences, like chat messages.`,
     `- VERY IMPORTANT: start every reply with an emotion tag matching the mood of this conversation: [happy], [excited], [playful], [curious], [surprised], [sad], [relaxed], or [angry]. Choose the feeling that matches what the conversation is about (e.g. [playful] for gaming/teasing/banter, [excited] for celebrations/great ideas, [curious] for questions/recommendations, [happy] for friendly chat, [relaxed] for cozy talk, [sad] for empathy). Example: [playful] Arre tum toh pakka haar jaoge Mario Kart mein!`,
