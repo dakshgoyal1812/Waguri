@@ -473,7 +473,9 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
   // ============================================================
   // Topbar Compact Mode (for logged in user)
   // ============================================================
-  if (compact && user) {
+  if (compact) {
+    if (!user) return null;
+
     const userEmail = user.email || '';
     const isGoogle = user.app_metadata?.provider === 'google' || user.user_metadata?.avatar_url;
     const name = user.user_metadata?.full_name || user.user_metadata?.name || userEmail.split('@')[0];
