@@ -8,7 +8,7 @@ import {
 } from '../lib/vrmStore.js';
 
 const PRESETS = [
-  { id: 'room', name: '3D Room Stage', desc: 'Cozy baked interior sitting room with warm lighting' },
+  { id: 'room', name: 'Cozy Room', desc: 'Anime wallpaper on phone / 3D room on laptop' },
   { id: 'sunset', name: 'Sunset Glow', desc: 'Warm radiant sunset & twilight gradient' },
   { id: 'paper', name: 'Textured Paper', desc: 'Light geometric woven paper pattern' },
   { id: 'wave', name: 'Colorful Wave', desc: 'Animated wave on cross grid' },
@@ -137,15 +137,23 @@ export default function BackgroundPicker({
         <div style={{
           position: 'absolute',
           inset: 0,
-          background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 45%, #7c2d12 100%)',
+          backgroundImage: "url('/room-phone.jpg')",
+          backgroundPosition: 'center 40%',
+          backgroundSize: 'cover',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
-          gap: '2px',
+          justifyContent: 'flex-end',
+          paddingBottom: '3px',
         }}>
-          <span style={{ fontSize: '20px' }}>🛋️</span>
-          <span style={{ fontSize: '9px', fontWeight: 800, color: '#fef3c7', letterSpacing: '0.6px' }}>3D ROOM</span>
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, transparent 30%, rgba(15, 10, 25, 0.85) 100%)',
+          }} />
+          <span style={{ position: 'relative', fontSize: '9px', fontWeight: 800, color: '#fef3c7', letterSpacing: '0.6px', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+            🛋️ COZY ROOM
+          </span>
         </div>
       );
     }
@@ -250,6 +258,28 @@ export default function BackgroundPicker({
 
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginTop: 4 }}>Preview</div>
               <div style={{ height: 110, borderRadius: 12, overflow: 'hidden', position: 'relative', border: '1px solid var(--border-glass)', flexShrink: 0 }}>
+                {draftId === 'room' && (
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    backgroundImage: "url('/room-phone.jpg')",
+                    backgroundPosition: 'center 45%',
+                    backgroundSize: 'cover',
+                  }}>
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.6) 100%)',
+                      display: 'flex',
+                      alignItems: 'flex-end',
+                      padding: '8px 12px',
+                    }}>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#fef3c7', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+                        Cozy Room (Anime Wallpaper on Phone, 3D Room on Laptop)
+                      </span>
+                    </div>
+                  </div>
+                )}
                 {draftId === 'sunset' && (
                   <div style={{
                     position: 'absolute',

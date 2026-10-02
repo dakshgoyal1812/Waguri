@@ -468,15 +468,23 @@ export default function App() {
   const renderBackground = () => {
     if (background.id === 'room') {
       return (
-        <div
-          className="bg-room-ambience"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'radial-gradient(ellipse at 50% 30%, rgba(254, 243, 199, 0.25) 0%, rgba(30, 27, 75, 0.85) 100%), #1e1b4b',
-            pointerEvents: 'none',
-          }}
-        />
+        <div className="bg-room-container" style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+          {/* Laptop / Desktop ambience behind 3D room */}
+          <div
+            className="bg-room-desktop-ambience"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'radial-gradient(ellipse at 50% 30%, rgba(254, 243, 199, 0.25) 0%, rgba(30, 27, 75, 0.85) 100%), #1e1b4b',
+              pointerEvents: 'none',
+            }}
+          />
+          {/* Phone / Mobile aesthetic anime cozy room wallpaper */}
+          <div className="bg-room-mobile-wallpaper">
+            <div className="bg-room-mobile-glow" />
+            <div className="bg-room-mobile-overlay" />
+          </div>
+        </div>
       );
     }
     if (background.id === 'sunset') return <SunsetBackground />;
