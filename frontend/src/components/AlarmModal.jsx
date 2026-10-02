@@ -264,12 +264,13 @@ export default function AlarmModal({ isOpen, onClose, activeVrmId = 'waguri', on
   const selectedAvatarMeta = BUNDLED_AVATARS.find((a) => a.id === formAvatarId) || BUNDLED_AVATARS[0];
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop alarm-backdrop" onClick={onClose}>
       <div
         className="modal-content alarm-modal-content"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 540 }}
       >
+        <div className="alarm-mobile-handle" aria-hidden="true" />
+
         {/* Header */}
         <div className="alarm-modal-header">
           <div className="alarm-header-left">

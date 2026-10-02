@@ -169,10 +169,130 @@ export default function App() {
     return () => { cancelled = true; };
   }, [activeVrmId]);
 
-  // Radial action menu (social-fab): open state + close on outside tap so the
-  // fan never lingers over the stage after the user taps elsewhere (mobile).
-  // pointerdown covers mouse, touch and pen with one event — no
-  // synthesized-mouse races on phones.
+  // 360° Interactive Rotary Wheel / Dial state for action buttons
+  const [dialRotation, setDialRotation] = useState(0);
+  const [isDialDragging, setIsDialDragging] = useState(false);
+  const dialDragRef = useRef({
+    isDown: false,
+    hasDragged: false,
+    startAngle: 0,
+    prevAngle: 0,
+    accumulatedDelta: 0,
+    velocity: 0,
+    lastTime: 0,
+    rafId: null,
+  });
+
+  // Inertia animation cleanup
+  useEffect(() => {
+    return () => {
+      if (dialDragRef.current.rafId) {
+        cancelAnimationFrame(dialDragRef.current.rafId);
+      }
+    };
+  }, []);
+
+  // Reset rotation to 0 whenever the user opens the dial menu so it always expands in default clean position
+  useEffect(() => {
+    if (fabOpen) {
+      if (dialDragRef.current.rafId) {
+        cancelAnimationFrame(dialDragRef.current.rafId);
+        dialDragRef.current.rafId = null;
+      }
+      setDialRotation(0);
+      dialDragRef.current.hasDragged = false;
+    }
+  }, [fabOpen]);
+
+  const getPointerAngle = (clientX, clientY) => {
+    if (!fabMenuRef.current) return 0;
+    const rect = fabMenuRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const rad = Math.atan2(clientY - cy, clientX - cx);
+    return (rad * 180) / Math.PI;
+  };
+
+  const handleDialPointerDown = (e) => {
+    if (!fabOpen) return;
+    if (dialDragRef.current.rafId) {
+      cancelAnimationFrame(dialDragRef.current.rafId);
+      dialDragRef.current.rafId = null;
+    }
+    const angle = getPointerAngle(e.clientX, e.clientY);
+    dialDragRef.current = {
+      isDown: true,
+      hasDragged: false,
+      startAngle: angle,
+      prevAngle: angle,
+      accumulatedDelta: 0,
+      velocity: 0,
+      lastTime: performance.now(),
+      rafId: null,
+    };
+    setIsDialDragging(true);
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {}
+  };
+
+  const handleDialPointerMove = (e) => {
+    if (!dialDragRef.current.isDown) return;
+    const currentAngle = getPointerAngle(e.clientX, e.clientY);
+    let delta = currentAngle - dialDragRef.current.prevAngle;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+
+    const now = performance.now();
+    const dt = Math.max(1, now - dialDragRef.current.lastTime);
+
+    dialDragRef.current.accumulatedDelta += Math.abs(delta);
+    if (dialDragRef.current.accumulatedDelta > 4) {
+      dialDragRef.current.hasDragged = true;
+    }
+
+    dialDragRef.current.velocity = delta / dt;
+    dialDragRef.current.prevAngle = currentAngle;
+    dialDragRef.current.lastTime = now;
+
+    setDialRotation((prev) => prev + delta);
+  };
+
+  const handleDialPointerUp = (e) => {
+    if (!dialDragRef.current.isDown) return;
+    dialDragRef.current.isDown = false;
+    setIsDialDragging(false);
+
+    try {
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    } catch {}
+
+    const wasDragged = dialDragRef.current.hasDragged;
+    if (wasDragged) {
+      setTimeout(() => {
+        dialDragRef.current.hasDragged = false;
+      }, 120);
+    }
+
+    // Apply smooth inertia if released with an angular spin flick
+    let v = dialDragRef.current.velocity * 16;
+    v = Math.max(-10, Math.min(10, v));
+
+    if (Math.abs(v) > 0.25) {
+      const step = () => {
+        v *= 0.92;
+        if (Math.abs(v) < 0.03) {
+          dialDragRef.current.rafId = null;
+          return;
+        }
+        setDialRotation((prev) => prev + v);
+        dialDragRef.current.rafId = requestAnimationFrame(step);
+      };
+      dialDragRef.current.rafId = requestAnimationFrame(step);
+    }
+  };
+
+  // Radial action menu (social-fab): open state + close on outside tap
   const [fabOpen, setFabOpen] = useState(false);
   const fabMenuRef = useRef(null);
   useEffect(() => {
@@ -184,8 +304,11 @@ export default function App() {
     return () => document.removeEventListener('pointerdown', onOutside);
   }, [fabOpen]);
 
-  // Run a menu action, then fold the fan away — standard speed-dial behavior.
+  // Run a menu action, then fold the fan away — unless user was spinning the dial!
   const handleFabAction = (fn) => {
+    if (dialDragRef.current.hasDragged) {
+      return;
+    }
     fn();
     setFabOpen(false);
   };
@@ -712,8 +835,21 @@ export default function App() {
       {/* radial action menu (bottom-right, social-clock style):
           collapsed to one trigger; expands into a colored button fan on
           hover (desktop) or trigger tap (touch), spinning out like a clock */}
-      <div className={`social-fab ${fabOpen ? 'open' : ''}`} ref={fabMenuRef}>
-        <div className="social-fab__list">
+      <div
+        className={`social-fab ${fabOpen ? 'open' : ''} ${isDialDragging ? 'is-dragging' : ''}`}
+        ref={fabMenuRef}
+        style={{ '--dial-rot': `${dialRotation}deg` }}
+      >
+        <div
+          className="social-fab__list"
+          ref={dialRef}
+          onPointerDown={handleDialPointerDown}
+          onPointerMove={handleDialPointerMove}
+          onPointerUp={handleDialPointerUp}
+          onPointerCancel={handleDialPointerUp}
+        >
+          {/* Visual rotary dial track ring */}
+          <div className="social-fab__dial-ring" aria-hidden="true" />
           <button
             className={`social-fab__button chat ${chatOpen ? 'active' : ''}`}
             onClick={() => handleFabAction(() => setChatOpen((o) => !o))}

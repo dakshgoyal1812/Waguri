@@ -737,26 +737,53 @@ body {
   animation: mic-pulse 1.6s ease-in-out infinite;
 }
 
-/* Ring wrapper: always clock-sized; collapsed it shrinks to a dot behind the
-   trigger, open it scales up while spinning 360° (the clock animation) */
+/* Ring wrapper: interactive 360° rotary dial wheel */
 .social-fab__list {
   position: absolute;
   left: calc(50% - var(--size-clock) / 2);
   top: calc(50% - var(--size-clock) / 2);
   width: var(--size-clock);
   height: var(--size-clock);
-  transform: scale(0.12);
+  transform: scale(0.12) rotate(var(--dial-rot, 0deg));
   pointer-events: none;
   transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  border-radius: 50%;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 .social-fab.open .social-fab__list {
-  transform: scale(1) rotate(360deg);
+  transform: scale(1) rotate(var(--dial-rot, 0deg));
+  pointer-events: auto;
+  cursor: grab;
+}
+.social-fab.is-dragging .social-fab__list {
+  transition: none !important;
+  cursor: grabbing;
+}
+
+/* Rotary dial visual track ring */
+.social-fab__dial-ring {
+  position: absolute;
+  inset: var(--size-padding);
+  border-radius: 50%;
+  border: 1.5px dashed rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease, border-color 0.3s ease;
+  box-shadow: inset 0 0 16px rgba(255, 255, 255, 0.04);
+}
+.social-fab.open .social-fab__dial-ring {
+  opacity: 0.85;
+}
+.social-fab.is-dragging .social-fab__dial-ring {
+  border-color: rgba(245, 158, 11, 0.65);
+  box-shadow: inset 0 0 20px rgba(245, 158, 11, 0.18), 0 0 15px rgba(245, 158, 11, 0.22);
 }
 
 /* Action buttons: real circles on the arc. rotate(θ) translateX(r) walks
-   clockwise from +x, so the arc runs 180° (due left) → 270° (straight up) —
-   every button stays inside the viewport even when the trigger sits in the
-   bottom-right corner. The trailing rotate(-θ) keeps icons upright. */
+   clockwise from +x, so the arc runs 180° (due left) → 270° (straight up).
+   The trailing rotate(-θ - dialRot) keeps icons upright at all 360° rotation angles! */
 .social-fab__button {
   --angle: calc(180deg + var(--index, 0) * 22.5deg);
 
@@ -780,12 +807,15 @@ body {
   box-shadow:
     inset 0 calc(-1 * var(--size-button)) 0 rgba(var(--color), 0),
     0 4px 14px rgba(var(--color), 0.35);
-  transform: rotate(var(--angle)) translate(var(--radius)) rotate(calc(-1 * var(--angle)));
-  transition: opacity 0.2s ease, box-shadow 0.3s ease-in-out, scale 0.15s ease;
+  transform: rotate(var(--angle)) translate(var(--radius)) rotate(calc(-1 * var(--angle) - var(--dial-rot, 0deg)));
+  transition: opacity 0.2s ease, box-shadow 0.3s ease-in-out, scale 0.15s ease, transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .social-fab.open .social-fab__button {
   pointer-events: auto;
   opacity: 1;
+}
+.social-fab.is-dragging .social-fab__button {
+  transition: opacity 0.2s ease, box-shadow 0.3s ease-in-out, scale 0.15s ease !important;
 }
 .social-fab__button:active { scale: 0.9; }
 
@@ -795,7 +825,15 @@ body {
   background: rgba(var(--color), 0.95);
 }
 
-.social-fab__button svg { fill: #fff; }
+.social-fab__button svg {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.2;
+}
+.social-fab__button.chat svg {
+  fill: #fff;
+  stroke: none;
+}
 
 /* Per-action colors (R, G, B triplets for rgba()) */
 .social-fab__button.chat   { --color: 34, 184, 207; }  /* app cyan — chat panel */
@@ -3731,6 +3769,8 @@ body {
 
 /* ============ Alarm & Reminder Modal (Option 5: Background Web Push) ============ */
 .alarm-modal-content {
+  width: min(540px, calc(100vw - 28px));
+  max-width: 540px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -3741,6 +3781,11 @@ body {
   display: flex;
   flex-direction: column;
   max-height: min(88vh, 700px);
+  position: relative;
+}
+
+.alarm-mobile-handle {
+  display: none;
 }
 
 .alarm-modal-header {
@@ -4275,4 +4320,142 @@ body {
   background: #f59e0b;
   color: #fff;
 }
+
+/* Mobile responsive styles for AlarmModal */
+@media (max-width: 640px) {
+  .modal-backdrop.alarm-backdrop {
+    padding: 0 !important;
+    align-items: flex-end !important;
+  }
+  .alarm-modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92vh !important;
+    max-height: 92dvh !important;
+    border-radius: 24px 24px 0 0 !important;
+    border-bottom: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    margin: 0 !important;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.3) !important;
+  }
+  .alarm-mobile-handle {
+    display: block;
+    width: 44px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.16);
+    margin: 8px auto 2px;
+  }
+  .alarm-modal-header {
+    padding: 10px 16px 12px;
+  }
+  .alarm-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+  .alarm-modal-title {
+    font-size: 1.05rem;
+  }
+  .alarm-modal-subtitle {
+    font-size: 0.7rem;
+  }
+  .alarm-toast-banner {
+    margin: 8px 14px 0;
+    padding: 8px 12px;
+    font-size: 0.76rem;
+  }
+  .alarm-push-alert {
+    margin: 8px 14px 0;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+  }
+  .alarm-presets-section {
+    padding: 10px 14px 6px;
+  }
+  .alarm-section-label {
+    font-size: 0.68rem;
+    margin-bottom: 6px;
+  }
+  .alarm-presets-grid {
+    display: flex !important;
+    grid-template-columns: none !important;
+    overflow-x: auto !important;
+    gap: 8px !important;
+    padding-bottom: 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .alarm-presets-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .alarm-preset-card {
+    flex: 0 0 auto !important;
+    width: 175px !important;
+    min-width: 175px !important;
+    padding: 8px 10px;
+  }
+  .preset-icon {
+    font-size: 1.15rem;
+  }
+  .preset-title {
+    font-size: 0.72rem;
+  }
+  .alarm-list-container {
+    padding: 8px 14px 16px;
+  }
+  .alarm-card {
+    padding: 12px;
+    gap: 10px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .alarm-time-digits {
+    font-size: 1.35rem;
+  }
+  .alarm-card-title {
+    font-size: 0.8rem;
+  }
+  .alarm-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding-top: 8px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+  }
+  .alarm-test-btn {
+    padding: 5px 8px;
+    font-size: 0.68rem;
+  }
+  .alarm-add-form {
+    padding: 10px 14px 18px;
+    gap: 10px;
+  }
+  .alarm-time-input {
+    font-size: 1.5rem;
+    padding: 8px 12px;
+    text-align: center;
+  }
+  .alarm-days-picker {
+    gap: 3px;
+  }
+  .alarm-day-pill {
+    font-size: 0.68rem;
+    padding: 6px 0;
+  }
+  .alarm-modal-footer {
+    padding: 10px 14px max(14px, env(safe-area-inset-bottom, 14px));
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .alarm-quick-test-action {
+    width: 100%;
+    justify-content: center;
+    padding: 8px 12px;
+  }
+}
+
 
