@@ -61,6 +61,17 @@ export default function BackgroundPicker({
     if (custom !== undefined) setDraftCustom(custom);
   };
 
+  const handleSelectBackground = (id, custom = '') => {
+    applyDraft(id, custom);
+    onApply({ id, custom });
+    onClose();
+  };
+
+  const handleSelectAvatar = (id) => {
+    onSelectVrm(id);
+    onClose();
+  };
+
   const onFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -69,7 +80,12 @@ export default function BackgroundPicker({
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => applyDraft('custom', String(reader.result));
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      applyDraft('custom', dataUrl);
+      onApply({ id: 'custom', custom: dataUrl });
+      onClose();
+    };
     reader.readAsDataURL(file);
   };
 
@@ -90,6 +106,7 @@ export default function BackgroundPicker({
       const meta = await saveCustomVrm(file);
       setCustomVrms((c) => [...c, meta]);
       onSelectVrm(meta.id);
+      onClose();
     } catch (err) {
       console.error('[waguri] VRM save failed:', err);
       alert(`Could not save that VRM: ${err.message}`);
@@ -199,7 +216,7 @@ export default function BackgroundPicker({
                     key={p.id}
                     type="button"
                     className={`bg-option ${draftId === p.id ? 'selected' : ''}`}
-                    onClick={() => applyDraft(p.id)}
+                    onClick={() => handleSelectBackground(p.id)}
                   >
                     <div className="bg-thumb">{thumbFor(p.id)}</div>
                     <span className="bg-name">{p.name}</span>
@@ -211,7 +228,7 @@ export default function BackgroundPicker({
                     key="custom"
                     type="button"
                     className={`bg-option ${draftId === 'custom' ? 'selected' : ''}`}
-                    onClick={() => applyDraft('custom')}
+                    onClick={() => handleSelectBackground('custom', draftCustom)}
                   >
                     <div className="bg-thumb">{thumbFor('custom')}</div>
                     <span className="bg-name">Custom image</span>
@@ -287,7 +304,7 @@ export default function BackgroundPicker({
                 <div
                   key={a.id}
                   className={`bg-option vrm-option ${activeVrmId === a.id ? 'selected' : ''}`}
-                  onClick={() => onSelectVrm(a.id)}
+                  onClick={() => handleSelectAvatar(a.id)}
                   style={{ cursor: 'pointer' }}
                 >
                   {activeVrmId === a.id && (
