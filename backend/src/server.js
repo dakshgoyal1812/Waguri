@@ -79,9 +79,19 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, uptime_s: Math.round(process.uptime()), storage: storage.kind });
-});
+// Health check keepalive endpoints (cron-job.org / Render health check / Uptime monitoring)
+const handleHealth = (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: 'waguri-backend',
+    uptime_s: Math.round(process.uptime()),
+    storage: storage.kind,
+  });
+};
+
+app.get('/api/health', handleHealth);
+app.get('/health', handleHealth);
+app.get('/', handleHealth);
 
 app.post('/api/chat', async (req, res, next) => {
   try {
