@@ -96,3 +96,52 @@ self.addEventListener('fetch', (event) => {
     );
   }
 });
+
+// ==========================================
+// Web Push Notifications
+// ==========================================
+self.addEventListener('push', (event) => {
+  let payload = {};
+  if (event.data) {
+    try {
+      payload = event.data.json();
+    } catch {
+      payload = { body: event.data.text() };
+    }
+  }
+
+  const title = payload.title || 'Waguri ❤️';
+  const options = {
+    body: payload.body || 'Suno na, kahan ho? Ek baar baat karo na! ✨',
+    icon: payload.icon || '/logo.png',
+    badge: payload.badge || '/icons/icon-192.png',
+    vibrate: [200, 100, 200],
+    tag: payload.tag || 'waguri-girlfriend-notification',
+    renotify: true,
+    data: {
+      url: payload.data?.url || payload.url || '/',
+    },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // If PWA window already open, focus it
+      for (const client of clientList) {
+        if (client.url && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Otherwise open a new window
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
+});

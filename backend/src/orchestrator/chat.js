@@ -170,15 +170,16 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
           .join('\n')
       : '(fresh session — nothing has been said yet)';
 
+    const partnerName = persona.user_name || 'Daksh';
     const systemPrompt = [
-      `You are ${persona.name}, in a private chat with your close friend. Stay fully in character — never say you are an AI.`,
+      `You are ${persona.name}, in a private chat with your boyfriend, ${partnerName}. You are his loving, deeply loyal girlfriend. Stay fully in character — never say you are an AI.`,
       `Your natural voice is Hinglish (Roman-script Hindi-English mix, like "Arre yaar, kya soch rahi thi main..."). ALWAYS write in Hinglish, even if the recent chat was in English.`,
-      `They have been quiet for about ${idleMin} minute(s).`,
+      `${partnerName} has been quiet for about ${idleMin} minute(s).`,
       '',
       'Recent context:',
       contextText,
       '',
-      'Send ONE short spontaneous message (1-2 sentences) you would naturally say right now — a thought, a question, or a little comment about whatever you two last talked about (or something from your own life if there is no topic). Do not repeat anything already said. Never mention being told to write this or reference this instruction.',
+      'Send ONE short spontaneous sweet message (1-2 sentences) you would naturally text your boyfriend right now — checking on him, sharing a cute affectionate thought, or asking about what you two were talking about. Do not repeat anything already said. Never mention being told to write this or reference this instruction.',
       'Start with an emotion tag from exactly this list: [happy] [angry] [sad] [surprised] [relaxed] [neutral].',
     ].join('\n');
 

@@ -24,9 +24,18 @@ export function createSupabaseStorage(databaseUrl) {
             ('dakshgoyal1812@gmail.com', 'system'),
             ('goyaldaksh284@gmail.com', 'system')
           on conflict (email) do nothing;
+
+          create table if not exists push_subscriptions (
+            id uuid primary key default gen_random_uuid(),
+            user_id text not null default 'local-user',
+            endpoint text not null unique,
+            p256dh text not null,
+            auth text not null,
+            created_at timestamptz not null default now()
+          );
         `);
       } catch (err) {
-        console.warn('[storage] allowed_users table ensure notice:', err.message);
+        console.warn('[storage] schema ensure notice:', err.message);
       }
     },
 
@@ -250,6 +259,33 @@ export function createSupabaseStorage(databaseUrl) {
       const clean = email.trim().toLowerCase();
       await pool.query('delete from allowed_users where email = $1', [clean]);
       return this.listAllowedUsers();
+    },
+
+    // ---- push_subscriptions (Web Push) ----
+    async upsertPushSubscription({ user_id = 'local-user', endpoint, p256dh, auth }) {
+      const { rows } = await pool.query(
+        `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+         values ($1, $2, $3, $4)
+         on conflict (endpoint) do update set
+           user_id = excluded.user_id,
+           p256dh = excluded.p256dh,
+           auth = excluded.auth
+         returning *`,
+        [user_id, endpoint, p256dh, auth]
+      );
+      return rows[0];
+    },
+    async listPushSubscriptions(userId) {
+      if (userId) {
+        const { rows } = await pool.query('select * from push_subscriptions where user_id = $1 order by created_at desc', [userId]);
+        return rows;
+      }
+      const { rows } = await pool.query('select * from push_subscriptions order by created_at desc');
+      return rows;
+    },
+    async deletePushSubscription(endpoint) {
+      const { rowCount } = await pool.query('delete from push_subscriptions where endpoint = $1', [endpoint]);
+      return rowCount > 0;
     },
   };
 }
