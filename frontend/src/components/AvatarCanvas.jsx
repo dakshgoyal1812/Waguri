@@ -88,6 +88,13 @@ const VOWEL_FORMANTS = {
   oh: [500, 850],
   ou: [320, 900],
 };
+const VOWEL_LIST = [
+  { id: 'aa', f1: 800, f2: 1200 },
+  { id: 'ee', f1: 500, f2: 2000 },
+  { id: 'ih', f1: 320, f2: 2300 },
+  { id: 'oh', f1: 500, f2: 850 },
+  { id: 'ou', f1: 320, f2: 900 },
+];
 
 // ---- arm rest pose (model-independent) ----
 // The tuned Euler pose below assumes the bone frames of waguri.vrm; models
@@ -134,6 +141,9 @@ const _euler = new THREE.Euler();
 const _quatA = new THREE.Quaternion();
 const _quatB = new THREE.Quaternion();
 const _parentQ = new THREE.Quaternion();
+const _tapMouse = new THREE.Vector2();
+const _tapRaycaster = new THREE.Raycaster();
+const _headPosVec = new THREE.Vector3();
 
 // Set a bone's pose as a WORLD-frame Euler delta (x = pitch forward, y = yaw
 // left, z = roll) composed onto its bind quaternion. Conjugating through the
@@ -658,6 +668,8 @@ export default function AvatarCanvas({
         roomSceneRef.current = roomScene;
         roomScene.traverse((obj) => {
           if (obj.isMesh && obj.material) {
+            obj.matrixAutoUpdate = false;
+            obj.updateMatrix();
             obj.material.side = THREE.DoubleSide;
             if (obj.material.map) {
               obj.material.map.colorSpace = THREE.SRGBColorSpace;
@@ -953,15 +965,14 @@ export default function AvatarCanvas({
       if (!vrm || !vrm.scene) return;
 
       const rect = renderer.domElement.getBoundingClientRect();
-      const mouse = new THREE.Vector2(
+      _tapMouse.set(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.clientY - rect.top) / rect.height) * 2 + 1
       );
 
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(mouse, camera);
+      _tapRaycaster.setFromCamera(_tapMouse, camera);
 
-      const intersects = raycaster.intersectObject(vrm.scene, true);
+      const intersects = _tapRaycaster.intersectObject(vrm.scene, true);
       if (intersects.length > 0) {
         const hit = intersects[0];
         const humanoid = vrm.humanoid;
@@ -970,10 +981,9 @@ export default function AvatarCanvas({
         if (humanoid) {
           const headBone = humanoid.getNormalizedBoneNode('head');
           if (headBone) {
-            const headPos = new THREE.Vector3();
-            headBone.getWorldPosition(headPos);
+            headBone.getWorldPosition(_headPosVec);
             // Within 0.32m of head bone center, or hit point is at/above forehead/hair level
-            if (hit.point.distanceTo(headPos) < 0.32 || hit.point.y >= headPos.y - 0.08) {
+            if (hit.point.distanceTo(_headPosVec) < 0.32 || hit.point.y >= _headPosVec.y - 0.08) {
               isHead = true;
             }
           }
@@ -1015,6 +1025,10 @@ export default function AvatarCanvas({
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
+
+      if (document.hidden) {
+        return;
+      }
 
       const now = performance.now();
       const currentTier = tierRef.current;
@@ -1118,13 +1132,13 @@ export default function AvatarCanvas({
         if (analyserRef.current && speakingRef.current) {
           analyserRef.current.getByteFrequencyData(freqData);
 
-          // RMS level with airi's 0.08 gate: silence keeps the mouth shut.
+          // Fast RMS with integer multiplication
           let sumSquares = 0;
           for (let i = 0; i < freqData.length; i++) {
-            const v = freqData[i] / 255;
+            const v = freqData[i];
             sumSquares += v * v;
           }
-          const rms = Math.sqrt(sumSquares / freqData.length);
+          const rms = Math.sqrt(sumSquares / (freqData.length * 65025));
           const level = Math.min(1, rms * 3.2);
 
           if (level > 0.08) {
@@ -1139,15 +1153,18 @@ export default function AvatarCanvas({
               }
               return n ? s / (n * 255) : 0;
             };
-            const e = {};
-            for (const [vowel, [f1, f2]] of Object.entries(VOWEL_FORMANTS)) {
-              e[vowel] = band(f1, 170) * band(f2, 260); // both formants present -> strong score
-            }
-            // Dominant vowel wins; hysteresis keeps the current vowel unless the
-            // challenger clearly beats it (prevents aa<->oh flicker).
-            let best = lipVowelRef.current, bestScore = e[best] * 1.15;
-            for (const vowel of Object.keys(e)) {
-              if (e[vowel] > bestScore) { best = vowel; bestScore = e[vowel]; }
+
+            // Dominant vowel wins with hysteresis (zero memory allocation)
+            let best = lipVowelRef.current;
+            let bestScore = 0;
+            for (let i = 0; i < VOWEL_LIST.length; i++) {
+              const item = VOWEL_LIST[i];
+              const score = band(item.f1, 170) * band(item.f2, 260);
+              const hurdle = item.id === best ? bestScore : bestScore * 1.15;
+              if (score > hurdle) {
+                best = item.id;
+                bestScore = score;
+              }
             }
             lipVowelRef.current = best;
 

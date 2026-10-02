@@ -1,6 +1,8 @@
-// Waguri AI Persona Companion — PWA Service Worker (v6)
-// v6: Optimized Web Push notifications & icons
-const CACHE_NAME = 'waguri-shell-v6';
+// Waguri AI Persona Companion — PWA Service Worker (v7)
+// v7: Ultra-fast PWA performance, separate 3D model cache (VRM/GLB), chunk asset caching
+const SHELL_CACHE = 'waguri-shell-v7';
+const MODELS_CACHE = 'waguri-models-v1';
+
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -16,19 +18,19 @@ const PRECACHE_ASSETS = [
 // Install: pre-cache app shell and immediately activate
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
+    caches.open(SHELL_CACHE).then((cache) => {
       return cache.addAll(PRECACHE_ASSETS);
     }).then(() => self.skipWaiting())
   );
 });
 
-// Activate: clean up old caches and claim clients
+// Activate: clean up old caches (preserving models cache) and claim clients
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys
-          .filter((key) => key !== CACHE_NAME)
+          .filter((key) => key !== SHELL_CACHE && key !== MODELS_CACHE)
           .map((key) => caches.delete(key))
       );
     }).then(() => self.clients.claim())
@@ -37,31 +39,70 @@ self.addEventListener('activate', (event) => {
 
 // Fetch:
 //  - API calls and non-GET requests always hit the network.
-//  - Page navigations are NETWORK-FIRST (fresh UI on every visit; cached
-//    shell only serves as the offline fallback).
-//  - Same-origin static assets stay stale-while-revalidate (instant load,
-//    quietly refreshed for the next visit).
+//  - 3D models (.vrm, .glb) use CACHE-FIRST in dedicated MODELS_CACHE for instant avatar loading.
+//  - Hashed bundles (/assets/*) use CACHE-FIRST with network fallback for zero-latency UI boot.
+//  - App shell navigations are NETWORK-FIRST with offline shell fallback.
+//  - Other same-origin static assets use STALE-WHILE-REVALIDATE.
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // 1. NEVER cache dynamic backend API requests (chat, tts, memory, audio endpoints)
+  // 1. NEVER cache dynamic backend API requests
   if (url.pathname.startsWith('/api/')) {
-    return; // allow standard network fetch
+    return;
   }
 
-  // 2. Non-GET requests (POST, PUT, DELETE) pass through
+  // 2. Non-GET requests pass through
   if (event.request.method !== 'GET') {
     return;
   }
 
-  // 3. App shell navigations: network-first with offline fallback to the shell
+  // 3. 3D Avatar Models & Room meshes (.vrm / .glb): Cache-First for instant switching
+  if (/\.(vrm|glb)($|\?)/i.test(url.pathname)) {
+    event.respondWith(
+      caches.open(MODELS_CACHE).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached) {
+          return cached;
+        }
+        try {
+          const networkResponse = await fetch(event.request);
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(event.request, networkResponse.clone());
+          }
+          return networkResponse;
+        } catch {
+          return cached || new Response('Model offline unavailable', { status: 503 });
+        }
+      })
+    );
+    return;
+  }
+
+  // 4. Vite built hashed assets (/assets/*.js, /assets/*.css): Cache-First for instant PWA boot
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const clone = networkResponse.clone();
+            caches.open(SHELL_CACHE).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        });
+      })
+    );
+    return;
+  }
+
+  // 5. App shell navigations: network-first with offline fallback
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
             const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
+            caches.open(SHELL_CACHE).then((cache) => {
               cache.put('/index.html', responseToCache);
             });
           }
@@ -72,7 +113,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4. Same-origin static resources: stale-while-revalidate
+  // 6. Same-origin static resources: stale-while-revalidate
   if (url.origin === self.location.origin) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
@@ -80,7 +121,7 @@ self.addEventListener('fetch', (event) => {
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
               const responseToCache = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => {
+              caches.open(SHELL_CACHE).then((cache) => {
                 cache.put(event.request, responseToCache);
               });
             }
