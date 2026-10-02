@@ -685,13 +685,15 @@ body {
 .social-fab {
   --size-button: 2.75rem;   /* 44px action buttons */
   --size-padding: 0.5rem;   /* pull the arc slightly inside the ring */
-  --size-clock: 15rem;      /* expanded ring diameter */
-  --size-trigger: var(--size-button);
+  --size-clock: 21.5rem;    /* 344px expanded ring diameter — plenty of distance and breathing room */
+  --size-trigger: 3rem;     /* 48px trigger */
   --radius: calc(var(--size-clock) / 2 - var(--size-padding));
+  --step-angle: 25.5deg;    /* Spacious angle between each button */
+  --start-angle: 162deg;    /* Elegant crescent arc */
 
   position: absolute;
-  right: 20px;
-  bottom: 20px;
+  right: 22px;
+  bottom: 22px;
   z-index: 35;
   width: var(--size-trigger);
   height: var(--size-trigger);
@@ -707,7 +709,7 @@ body {
   border: 1px solid var(--border-glass);
   border-radius: 50%;
   background: var(--surface);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
   color: var(--accent-cyan);
   cursor: pointer;
   box-shadow: var(--shadow-card);
@@ -715,12 +717,12 @@ body {
   touch-action: manipulation;
   -webkit-user-select: none;
   user-select: none;
-  transition: background 0.3s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease;
+  transition: background 0.3s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
 }
-.social-fab__trigger svg { transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+.social-fab__trigger svg { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
 .social-fab.open .social-fab__trigger {
   background: var(--surface-solid, var(--surface));
-  box-shadow: 0 8px 22px rgba(168, 85, 247, 0.25);
+  box-shadow: 0 8px 24px rgba(168, 85, 247, 0.28);
 }
 .social-fab.open .social-fab__trigger svg { transform: rotate(90deg); }
 
@@ -746,7 +748,7 @@ body {
   height: var(--size-clock);
   transform: scale(0.12) rotate(var(--dial-rot, 0deg));
   pointer-events: none;
-  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   border-radius: 50%;
   user-select: none;
   -webkit-user-select: none;
@@ -757,7 +759,10 @@ body {
   pointer-events: auto;
   cursor: grab;
 }
-.social-fab.is-dragging .social-fab__list {
+
+/* When dragging OR momentum-rolling, DISABLE CSS transitions on rotation so physics is 100% direct and jitter-free! */
+.social-fab.is-dragging .social-fab__list,
+.social-fab.is-rolling .social-fab__list {
   transition: none !important;
   cursor: grabbing;
 }
@@ -767,25 +772,26 @@ body {
   position: absolute;
   inset: var(--size-padding);
   border-radius: 50%;
-  border: 1.5px dashed rgba(255, 255, 255, 0.22);
+  border: 1.5px dashed rgba(255, 255, 255, 0.25);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.3s ease, border-color 0.3s ease;
-  box-shadow: inset 0 0 16px rgba(255, 255, 255, 0.04);
+  transition: opacity 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05);
 }
 .social-fab.open .social-fab__dial-ring {
-  opacity: 0.85;
+  opacity: 0.9;
 }
-.social-fab.is-dragging .social-fab__dial-ring {
+.social-fab.is-dragging .social-fab__dial-ring,
+.social-fab.is-rolling .social-fab__dial-ring {
   border-color: rgba(245, 158, 11, 0.65);
-  box-shadow: inset 0 0 20px rgba(245, 158, 11, 0.18), 0 0 15px rgba(245, 158, 11, 0.22);
+  box-shadow: inset 0 0 24px rgba(245, 158, 11, 0.22), 0 0 16px rgba(245, 158, 11, 0.22);
 }
 
-/* Action buttons: real circles on the arc. rotate(θ) translateX(r) walks
-   clockwise from +x, so the arc runs 180° (due left) → 270° (straight up).
+/* Action buttons: spacious circles along the circular arc.
+   rotate(θ) translateX(r) walks clockwise from center.
    The trailing rotate(-θ - dialRot) keeps icons upright at all 360° rotation angles! */
 .social-fab__button {
-  --angle: calc(180deg + var(--index, 0) * 22.5deg);
+  --angle: calc(var(--start-angle, 162deg) + var(--index, 0) * var(--step-angle, 25.5deg));
 
   position: absolute;
   left: calc(50% - var(--size-button) / 2);
@@ -795,9 +801,10 @@ body {
   display: grid;
   place-items: center;
   padding: 0;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
-  background: rgba(var(--color), 0.55);
+  background: rgba(var(--color), 0.65);
+  backdrop-filter: blur(8px);
   color: #fff;
   cursor: pointer;
   touch-action: manipulation;
@@ -805,24 +812,28 @@ body {
   pointer-events: none;
   opacity: 0;
   box-shadow:
-    inset 0 calc(-1 * var(--size-button)) 0 rgba(var(--color), 0),
-    0 4px 14px rgba(var(--color), 0.35);
+    inset 0 1px 1px rgba(255, 255, 255, 0.4),
+    0 4px 16px rgba(var(--color), 0.38);
   transform: rotate(var(--angle)) translate(var(--radius)) rotate(calc(-1 * var(--angle) - var(--dial-rot, 0deg)));
-  transition: opacity 0.2s ease, box-shadow 0.3s ease-in-out, scale 0.15s ease, transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.25s ease, box-shadow 0.25s ease-in-out, scale 0.15s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .social-fab.open .social-fab__button {
   pointer-events: auto;
   opacity: 1;
 }
-.social-fab.is-dragging .social-fab__button {
+
+/* Zero transition lag during active drag or momentum rolling */
+.social-fab.is-dragging .social-fab__button,
+.social-fab.is-rolling .social-fab__button {
   transition: opacity 0.2s ease, box-shadow 0.3s ease-in-out, scale 0.15s ease !important;
 }
-.social-fab__button:active { scale: 0.9; }
+.social-fab__button:active { scale: 0.92; }
 
 /* toggled-on actions keep their full color in every state */
 .social-fab.open .social-fab__button.active,
 .social-fab.open .social-fab__button.mic-active {
   background: rgba(var(--color), 0.95);
+  box-shadow: 0 0 20px rgba(var(--color), 0.65);
 }
 
 .social-fab__button svg {
@@ -835,29 +846,20 @@ body {
   stroke: none;
 }
 
-/* Per-action colors (R, G, B triplets for rgba()) */
-.social-fab__button.chat   { --color: 34, 184, 207; }  /* app cyan — chat panel */
-.social-fab__button.mic    { --color: 244, 114, 182; } /* app pink — hands-free mic */
-.social-fab__button.alarm  { --color: 245, 158, 11; }  /* amber gold — alarms & reminders */
-.social-fab__button.voice  { --color: 251, 146, 60; }  /* voice energy orange */
-.social-fab__button.bg     { --color: 99, 102, 241; }  /* theme indigo — background picker */
+/* Per-action colors & explicit indices (avoids any sibling nth-child shift) */
+.social-fab__button.chat   { --index: 0; --color: 34, 184, 207; }  /* app cyan — chat panel */
+.social-fab__button.mic    { --index: 1; --color: 244, 114, 182; } /* app pink — hands-free mic */
+.social-fab__button.alarm  { --index: 2; --color: 245, 158, 11; }  /* amber gold — alarms & reminders */
+.social-fab__button.voice  { --index: 3; --color: 251, 146, 60; }  /* voice energy orange */
+.social-fab__button.bg     { --index: 4; --color: 99, 102, 241; }  /* theme indigo — background picker */
+.social-fab__button.notif  { --index: 5; --color: 16, 185, 129; }  /* emerald green — notification alerts */
+.social-fab__button.admin  { --index: 6; --color: 168, 85, 247; }  /* royal violet — admin access portal */
 
-/* Arc order: left → up (5 buttons across 90-degree quadrant) */
-.social-fab__button:nth-child(1) { --index: 0; }
-.social-fab__button:nth-child(2) { --index: 1; }
-.social-fab__button:nth-child(3) { --index: 2; }
-.social-fab__button:nth-child(4) { --index: 3; }
-.social-fab__button:nth-child(5) { --index: 4; }
-
-/* Hover affordances are DESKTOP-ONLY polish (color fill, trigger scale).
-   Opening/closing is a click/tap toggle on every device — hover-open mixed
-   with click-toggle made the trigger feel dead (sticky hover): the pointer
-   resting on the trigger held the fan open even after the closing tap.
-   Touch and desktop alike drive the fan through the .open class and the
-   :active press feedback above. */
+/* Hover affordances are DESKTOP-ONLY polish */
 @media (hover: hover) and (pointer: fine) {
   .social-fab__button:hover {
-    background: rgba(var(--color), 0.95);
+    background: rgba(var(--color), 0.98);
+    transform: rotate(var(--angle)) translate(var(--radius)) rotate(calc(-1 * var(--angle) - var(--dial-rot, 0deg))) scale(1.12);
   }
   .social-fab__trigger:hover { transform: scale(1.07); }
 }
@@ -1278,10 +1280,12 @@ body {
     padding: 16px 14px 8px;
   }
   .social-fab {
-    --size-button: 2.5rem;      /* 40px action buttons on phones */
-    --size-clock: 11.5rem;      /* tighter arc that still clears the screen edges */
-    --size-trigger: 2.75rem;    /* 44px trigger — comfortable thumb target */
-    right: 12px;
+    --size-button: 2.45rem;     /* ~39px action buttons on phones */
+    --size-clock: 17.5rem;      /* 280px generous ring diameter — spacious, zero overlap */
+    --size-trigger: 2.85rem;    /* 45px trigger — comfortable thumb target */
+    --step-angle: 25deg;        /* Spacious 25° spacing gives ~21px clean gap between buttons */
+    --start-angle: 165deg;
+    right: 14px;
     bottom: max(74px, calc(74px + env(safe-area-inset-bottom, 0px)));
   }
   /* bottom-left avatar button floats above the input pill on phones */
