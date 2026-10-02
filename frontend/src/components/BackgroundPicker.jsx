@@ -47,10 +47,11 @@ export default function BackgroundPicker({
 
   useEffect(() => {
     if (!isOpen) return;
+    setActiveTab(initialTab);
     setDraftId(background?.id || 'wave');
     setDraftCustom(background?.custom || '');
     listCustomVrms().then(setCustomVrms).catch(() => setCustomVrms([]));
-  }, [isOpen, background]);
+  }, [isOpen, background, initialTab]);
 
   if (!isOpen) return null;
 

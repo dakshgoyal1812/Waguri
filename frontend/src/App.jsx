@@ -127,8 +127,8 @@ export default function App() {
 
   // Modals
   const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
+  const [bgPickerTab, setBgPickerTab] = useState('background');
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
-  const [isVrmPickerOpen, setIsVrmPickerOpen] = useState(false);
 
   // Active avatar (VRM). The id persists; bundled ids resolve to /public URLs,
   // custom ids to IndexedDB blobs served via object URLs.
@@ -593,6 +593,16 @@ export default function App() {
           )}
           <button
             type="button"
+            className="topbar-avatar-btn"
+            onClick={() => { setBgPickerTab('avatar'); setIsBgPickerOpen(true); }}
+            title="Switch 3D Avatar (Waguri, Zero, VRM 3-9...)"
+            aria-label="Switch 3D Avatar"
+          >
+            <UserRound size={15} />
+            <span className="topbar-avatar-btn-text">Avatars</span>
+          </button>
+          <button
+            type="button"
             className={`push-notif-btn ${pushSubscribed ? 'active' : ''}`}
             onClick={handleTogglePush}
             disabled={pushLoading}
@@ -722,6 +732,7 @@ export default function App() {
         onApply={setBackground}
         activeVrmId={activeVrmId}
         onSelectVrm={(id) => setActiveVrmId(id)}
+        initialTab={bgPickerTab}
       />
 
       <AdminPortal

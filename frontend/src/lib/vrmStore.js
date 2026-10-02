@@ -10,6 +10,12 @@ const STORE = 'vrms';
 export const BUNDLED_AVATARS = [
   { id: 'waguri', name: 'Waguri', url: '/waguri.vrm', desc: 'Default companion', thumb: '/avatars/waguri.png' },
   { id: 'zero', name: 'Zero', url: '/Zero.vrm', desc: 'Bundled VRoid avatar', thumb: '/avatars/zero.png' },
+  { id: 'vrm3', name: 'VRM 3 (Sample B)', url: '/vrm3.vrm', desc: 'Pixiv VRoid Avatar B', thumb: '/avatars/vrm3.png' },
+  { id: 'vrm4', name: 'VRM 4 (Sample E)', url: '/vrm4.vrm', desc: 'Pixiv VRoid Avatar E', thumb: '/avatars/vrm4.png' },
+  { id: 'vrm6', name: 'VRM 6 (Sample Y)', url: '/vrm6.vrm', desc: 'Pixiv VRoid Avatar Y', thumb: '/avatars/vrm6.png' },
+  { id: 'vrm7', name: 'VRM 7 (Sample K)', url: '/vrm7.vrm', desc: 'Pixiv VRoid Avatar K', thumb: '/avatars/vrm7.png' },
+  { id: 'vrm8', name: 'VRM 8 (Sample W)', url: '/vrm8.vrm', desc: 'Pixiv VRoid Avatar W', thumb: '/avatars/vrm8.png' },
+  { id: 'vrm9', name: 'VRM 9 (Sample Q)', url: '/vrm9.vrm', desc: 'Pixiv VRoid Avatar Q', thumb: '/avatars/vrm9.png' },
 ];
 
 export const DEFAULT_VRM_URL = '/waguri.vrm';
