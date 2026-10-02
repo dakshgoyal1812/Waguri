@@ -281,7 +281,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
     }
   };
 
-  // Handler: Email + Password Sign Up (Triggers Brevo SMTP Verification)
+  // Handler: Email + Password Sign Up
   const handleEmailSignUp = async (e) => {
     e.preventDefault();
     setErrorMsg('');
@@ -316,7 +316,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         setPendingEmail(cleanEmail);
         setStep('verify_otp');
         setSuccessMsg(
-          `Verification email sent to ${cleanEmail} via Brevo SMTP! Please check your inbox.`
+          `Verification email sent to ${cleanEmail}! Please check your inbox.`
         );
         setCooldown(60);
       } else if (data?.session) {
@@ -337,7 +337,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
     }
   };
 
-  // Handler: Magic Link / OTP Email Sign-In (Passwordless via Brevo)
+  // Handler: Magic Link / OTP Email Sign-In (Passwordless)
   const handleMagicLink = async (e) => {
     e.preventDefault();
     setErrorMsg('');
@@ -358,7 +358,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
       setPendingEmail(cleanEmail);
       setStep('magic_link_sent');
       setSuccessMsg(
-        `Magic login link sent to ${cleanEmail} via Brevo! Check your inbox.`
+        `Magic login link sent to ${cleanEmail}! Check your inbox.`
       );
       setCooldown(60);
     } catch (err) {
@@ -407,7 +407,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
     }
   };
 
-  // Handler: Resend verification email via Brevo
+  // Handler: Resend verification email
   const handleResendVerification = async () => {
     if (cooldown > 0 || !pendingEmail) return;
     setErrorMsg('');
@@ -419,7 +419,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         setErrorMsg(error.message);
         return;
       }
-      setSuccessMsg(`A new verification email has been dispatched to ${pendingEmail} via Brevo SMTP!`);
+      setSuccessMsg(`A new verification email has been sent to ${pendingEmail}!`);
       setCooldown(60);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to resend email.');
@@ -446,7 +446,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         setErrorMsg(error.message);
         return;
       }
-      setSuccessMsg(`Password reset link sent to ${cleanEmail} via Brevo!`);
+      setSuccessMsg(`Password reset link sent to ${cleanEmail}!`);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to send reset link.');
     } finally {
@@ -519,7 +519,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
             <div className="dropdown-header">
               <div className="dropdown-badge">
                 <ShieldCheck size={14} />
-                <span>{isGoogle ? 'Google Verified' : 'Brevo Email Verified'}</span>
+                <span>{isGoogle ? 'Google Verified' : 'Email Verified'}</span>
               </div>
               <p className="dropdown-name">{name}</p>
               <p className="dropdown-email">{userEmail}</p>
@@ -606,27 +606,12 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         <div className="auth-envelope-pulse">
           <Send size={30} className="text-pink-500" />
         </div>
-        <div className="auth-brevo-tag">
-          <Sparkles size={13} />
-          <span>Brevo SMTP Active</span>
-        </div>
         <h3 className="auth-card-title">Magic Link Sent! ✉️</h3>
         <p className="auth-card-description">
           We sent a secure 1-click sign-in link to:
           <br />
           <strong className="auth-highlight-email">{pendingEmail || email}</strong>
         </p>
-
-        <div className="auth-magic-link-box">
-          <div className="auth-magic-link-item">
-            <CheckCircle2 size={16} className="text-emerald-500" style={{ marginTop: '2px', flexShrink: 0 }} />
-            <span>Open your email from <strong>Brevo</strong> and click <strong>"Sign In to Waguri"</strong>.</span>
-          </div>
-          <div className="auth-magic-link-item">
-            <Sparkles size={16} className="text-purple-500" style={{ marginTop: '2px', flexShrink: 0 }} />
-            <span>No code or password needed. This page will automatically unlock once you click the link!</span>
-          </div>
-        </div>
 
         <div className="auth-waiting-badge">
           <div className="auth-pulse-dot" />
@@ -684,16 +669,12 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
     );
   }
 
-  // State: Email Verification Pending (Brevo SMTP dispatched for New Signups)
+  // State: Email Verification Pending (for New Signups)
   if (step === 'verify_otp') {
     return (
       <div className="auth-step-container">
         <div className="auth-envelope-pulse">
           <Mail size={32} className="text-pink-500" />
-        </div>
-        <div className="auth-brevo-tag">
-          <Sparkles size={13} />
-          <span>Brevo SMTP Active</span>
         </div>
         <h3 className="auth-card-title">Check Your Inbox 📬</h3>
         <p className="auth-card-description">
@@ -705,7 +686,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         <div className="auth-verify-dual-instructions">
           <div className="auth-verify-method">
             <span className="method-num">1</span>
-            <span>Click the <strong>Confirmation Link</strong> in the email sent by Brevo.</span>
+            <span>Click the <strong>Confirmation Link</strong> in the email.</span>
           </div>
           <div className="auth-verify-divider">OR</div>
           <div className="auth-verify-method">
@@ -786,7 +767,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
       <div className="auth-step-container">
         <h3 className="auth-card-title">Reset Password</h3>
         <p className="auth-card-description">
-          Enter your email and we will send you a password reset link via Brevo SMTP.
+          Enter your email and we will send you a password reset link.
         </p>
         <form onSubmit={handleForgotPassword} className="auth-form">
           <div className="auth-input-group">
@@ -828,12 +809,6 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
   // ============================================================
   return (
     <div className="auth-interactive-panel">
-      {/* Brevo Delivery Assurance Badge */}
-      <div className="auth-brevo-pill" title="Email verification powered by Brevo SMTP">
-        <Sparkles size={12} className="brevo-sparkle-icon" />
-        <span>Secured via <strong>Brevo SMTP</strong></span>
-      </div>
-
       {/* Tabs */}
       <div className="auth-tabs-header">
         <button
@@ -931,11 +906,11 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         </form>
       )}
 
-      {/* TAB 2: Create Account with Email (Brevo Verification) */}
+      {/* TAB 2: Create Account with Email */}
       {step === 'signup' && (
         <form onSubmit={handleEmailSignUp} className="auth-form">
           <div className="auth-tab-intro">
-            <span>✨ Brevo will send a verification link to confirm your inbox.</span>
+            <span>✨ A verification link will be sent to confirm your inbox.</span>
           </div>
 
           <div className="auth-input-group">
@@ -978,7 +953,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         </form>
       )}
 
-      {/* TAB 3: Magic Link (Passwordless via Brevo) */}
+      {/* TAB 3: Magic Link (Passwordless) */}
       {step === 'otp_login' && (
         <form onSubmit={handleMagicLink} className="auth-form">
           <div className="auth-tab-intro">

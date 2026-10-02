@@ -455,7 +455,7 @@ export default function App() {
             <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} />
           </div>
           <div className="auth-gate-footer">
-            <span>🔒 Authorized accounts • Email verified via Brevo SMTP</span>
+            <span>🔒 Authorized accounts only</span>
           </div>
         </div>
       </div>

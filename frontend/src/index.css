@@ -1686,7 +1686,7 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* ============ Interactive Auth Panel & Brevo SMTP Verification ============ */
+/* ============ Interactive Auth Panel ============ */
 
 .auth-interactive-panel {
   width: 100%;
@@ -1694,25 +1694,6 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 13px;
-}
-
-.auth-brevo-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(168, 85, 247, 0.08));
-  border: 1px solid rgba(59, 130, 246, 0.25);
-  color: #2563eb;
-  padding: 4px 12px;
-  border-radius: 9999px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.brevo-sparkle-icon {
-  color: #3b82f6;
-  animation: pulseGlow 2s infinite ease-in-out;
 }
 
 .auth-tabs-header {
@@ -1930,7 +1911,7 @@ body {
   animation: fadeIn 0.2s ease;
 }
 
-/* ============ Email Verification State (Brevo Dispatched) ============ */
+/* ============ Email Verification State ============ */
 
 .auth-step-container {
   width: 100%;
@@ -1965,18 +1946,6 @@ body {
   }
 }
 
-.auth-brevo-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #2563eb;
-  background: rgba(37, 99, 235, 0.1);
-  border: 1px solid rgba(37, 99, 235, 0.25);
-  padding: 3px 10px;
-  border-radius: 9999px;
-}
 
 .auth-card-title {
   font-size: 1.35rem;
