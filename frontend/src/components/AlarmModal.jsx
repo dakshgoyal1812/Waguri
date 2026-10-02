@@ -37,7 +37,7 @@ const PRESETS = [
     time: '07:30',
     type: 'alarm',
     days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    message: 'Good morning darling! Utho na, nayi subah ho gayi hai aur Waguri tumhara wait kar rahi hai! ❤️',
+    message: 'Good morning! Utho na, nayi subah ho gayi hai aur Waguri tumhara wait kar rahi hai! ❤️',
     icon: '🌅',
   },
   {
@@ -45,7 +45,7 @@ const PRESETS = [
     time: '14:00',
     type: 'reminder',
     days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    message: 'Suno na, thoda paani pi lo! Hydrated rehna tumhari health ke liye bohot zaroori hai ✨',
+    message: 'Suno na, thoda paani pi lo! Hydrated rehna health ke liye bohot zaroori hai ✨',
     icon: '💧',
   },
   {
@@ -53,7 +53,7 @@ const PRESETS = [
     time: '23:00',
     type: 'alarm',
     days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    message: 'Itni raat ho gayi hai! Phone ab band karo aur aaram se so jao, sweet dreams darling! 🌙',
+    message: 'Itni raat ho gayi hai! Phone ab band karo aur aaram se so jao, sweet dreams! 🌙',
     icon: '🌙',
   },
   {
@@ -238,7 +238,7 @@ export default function AlarmModal({ isOpen, onClose, activeVrmId = 'waguri', on
     setPlayingVoice(true);
     try {
       const res = await synthesizeToUrl(
-        formMessage || 'Subah ho gayi hai darling! Utho na!',
+        formMessage || 'Subah ho gayi hai! Utho na!',
         'happy',
         formAvatarId
       );

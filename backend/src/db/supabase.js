@@ -53,6 +53,7 @@ export function createSupabaseStorage(databaseUrl) {
             created_at timestamptz not null default now()
           );
           alter table reminders_alarms add column if not exists avatar_id text default 'waguri';
+          update personas set speech_style = replace(replace(speech_style, 'baby/', ''), 'baby', '') where speech_style like '%baby%';
         `);
       } catch (err) {
         console.warn('[storage] schema ensure notice:', err.message);
