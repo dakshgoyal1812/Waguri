@@ -2,6 +2,8 @@
 // Two implementations:
 //   - supabase.js : real Postgres (Supabase) + pgvector — production path
 //   - memory.js   : faithful in-memory replica — local dev and tests
+import { encryptMessage, decryptMessage } from '../crypto.js';
+
 export function createMemoryStorage() {
   const now = () => new Date();
   const db = {
@@ -86,19 +88,28 @@ export function createMemoryStorage() {
 
     // ---- messages ----
     async addMessage({ conversation_id, role, content }) {
-      const row = { id: id(), conversation_id, role, content, created_at: now().toISOString() };
+      const encrypted = encryptMessage(content);
+      const row = { id: id(), conversation_id, role, content: encrypted, created_at: now().toISOString() };
       db.messages.get(conversation_id).push(row);
-      return clone(row);
+      return { ...clone(row), content }; // caller receives plain content
     },
     async getRecentMessages(conversation_id, limit) {
       const all = db.messages.get(conversation_id) || [];
-      return all.slice(-limit).map(clone);
+      return all.slice(-limit).map((m) => {
+        const item = clone(m);
+        item.content = decryptMessage(item.content);
+        return item;
+      });
     },
     async getHistory(conversation_id, { page = 1, limit = 50 }) {
       const all = db.messages.get(conversation_id) || [];
       const total = all.length;
       const start = Math.max(0, total - page * limit);
-      const items = all.slice(start, start + limit).map(clone); // newest page first, oldest-first inside
+      const items = all.slice(start, start + limit).map((m) => {
+        const item = clone(m);
+        item.content = decryptMessage(item.content);
+        return item;
+      }); // newest page first, oldest-first inside
       return { items, page, limit, total };
     },
     async getLastUserMessageTime() {
@@ -116,14 +127,21 @@ export function createMemoryStorage() {
 
     // ---- memory vectors (RAG) ----
     async insertMemoryVector({ conversation_id, content_chunk, embedding }) {
-      const row = { id: id(), conversation_id, content_chunk, embedding, created_at: now().toISOString() };
+      const encryptedChunk = encryptMessage(content_chunk);
+      const row = { id: id(), conversation_id, content_chunk: encryptedChunk, embedding, created_at: now().toISOString() };
       db.memoryVectors.get(conversation_id).push(row);
       return { id: row.id };
     },
-    async searchMemory({ conversation_id, embedding, k }) {
-      // In companion mode, retrieve relevant memories across all past exchanges/sessions
+    async searchMemory({ userId, conversation_id, embedding, k }) {
+      // In companion mode, retrieve relevant memories strictly partitioned by user
+      const targetUserId = userId || (conversation_id ? db.conversations.get(conversation_id)?.user_id : null);
       const allRows = [];
-      for (const list of db.memoryVectors.values()) {
+      for (const [cid, list] of db.memoryVectors.entries()) {
+        const conv = db.conversations.get(cid);
+        // If targetUserId is identified, filter memories only belonging to this user
+        if (targetUserId && conv && conv.user_id !== targetUserId) {
+          continue;
+        }
         allRows.push(...list);
       }
       const cos = (a, b) => {
@@ -133,7 +151,11 @@ export function createMemoryStorage() {
         return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
       };
       return allRows
-        .map((r) => ({ content_chunk: r.content_chunk, created_at: r.created_at, similarity: cos(embedding, r.embedding) }))
+        .map((r) => ({
+          content_chunk: decryptMessage(r.content_chunk),
+          created_at: r.created_at,
+          similarity: cos(embedding, r.embedding),
+        }))
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, k);
     },

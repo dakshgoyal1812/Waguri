@@ -175,6 +175,10 @@ app.get('/api/conversations/:id/history', async (req, res, next) => {
   try {
     const conversation = await storage.getConversation(req.params.id);
     if (!conversation) return res.status(404).json({ error: 'conversation not found' });
+    const requestingUserId = req.query.user_id || req.get('x-user-id');
+    if (conversation.user_id && requestingUserId && conversation.user_id !== requestingUserId) {
+      return res.status(403).json({ error: 'unauthorized: this conversation belongs to another user' });
+    }
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const history = await storage.getHistory(req.params.id, { page, limit });

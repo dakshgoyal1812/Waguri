@@ -56,8 +56,10 @@ export async function fetchIdleComment({ conversationId, personaId, idleSeconds 
   return handleResponse(res);
 }
 
-export async function getConversationHistory(conversationId, { page = 1, limit = 50 } = {}) {
-  const res = await fetch(`${BASE_URL}/api/conversations/${conversationId}/history?page=${page}&limit=${limit}`);
+export async function getConversationHistory(conversationId, { page = 1, limit = 50, userId } = {}) {
+  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (userId) query.set('user_id', userId);
+  const res = await fetch(`${BASE_URL}/api/conversations/${conversationId}/history?${query.toString()}`);
   return handleResponse(res);
 }
 
