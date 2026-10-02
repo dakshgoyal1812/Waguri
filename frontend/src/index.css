@@ -1317,35 +1317,6 @@ body {
   transform: translateY(0);
 }
 
-/* Topbar Avatar Switcher Button */
-.topbar-avatar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--surface);
-  color: var(--text-primary);
-  border: 1px solid var(--border-glass);
-  border-radius: 9999px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-.topbar-avatar-btn:hover {
-  transform: translateY(-1px);
-  border-color: rgba(139, 92, 246, 0.5);
-  color: #8b5cf6;
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
-}
-.topbar-avatar-btn:active {
-  transform: translateY(0);
-}
-
 /* Push Notification Button */
 .push-notif-btn {
   display: inline-flex;

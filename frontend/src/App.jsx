@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, UserRound, Bell, BellRing } from 'lucide-react';
+import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
@@ -604,16 +604,6 @@ export default function App() {
               <span className="install-pwa-btn-text">📱 Install App</span>
             </button>
           )}
-          <button
-            type="button"
-            className="topbar-avatar-btn"
-            onClick={() => { setBgPickerTab('avatar'); setIsBgPickerOpen(true); }}
-            title="Switch 3D Avatar (Waguri, Zero, VRM 3-9...)"
-            aria-label="Switch 3D Avatar"
-          >
-            <UserRound size={15} />
-            <span className="topbar-avatar-btn-text">Avatars</span>
-          </button>
           <button
             type="button"
             className={`push-notif-btn ${pushSubscribed ? 'active' : ''}`}
