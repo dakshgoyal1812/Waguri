@@ -306,6 +306,13 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
 
       // Check if email confirmation is required
       if (data?.user && !data?.session) {
+        // If user already exists in Supabase, identities array is empty and no email is sent
+        if (data.user.identities && data.user.identities.length === 0) {
+          setErrorMsg(
+            'This email is already registered! Please go to the "Sign In" tab (use "Sign In with Google" if you signed up with Google, or "Forgot password" to set a password).'
+          );
+          return;
+        }
         setPendingEmail(cleanEmail);
         setStep('verify_otp');
         setSuccessMsg(
