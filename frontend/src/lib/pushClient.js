@@ -55,6 +55,8 @@ export async function subscribeToPush(userId = 'local-user') {
   if (!publicKey) throw new Error('VAPID public key is missing on backend');
 
   const reg = await navigator.serviceWorker.ready;
+  try { await reg.update(); } catch {}
+
   let sub = await reg.pushManager.getSubscription();
 
   if (!sub) {
@@ -112,3 +114,24 @@ export async function sendTestNotification(userId = 'local-user') {
   });
   return await res.json();
 }
+
+export async function showLocalNotification(title = 'Waguri ❤️', body = 'Test Notification: Device par notifications successfully allow ho gayi hain! ✨') {
+  if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(title, {
+      body,
+      icon: '/logo.png',
+      badge: '/icons/icon-192.png',
+      vibrate: [200, 100, 200],
+      tag: 'waguri-direct-test',
+      renotify: true,
+      data: { url: '/' },
+    });
+    return true;
+  } catch (err) {
+    console.warn('[push] direct showNotification failed:', err);
+    return false;
+  }
+}
+

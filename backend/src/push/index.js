@@ -34,7 +34,10 @@ export function createPushService({ storage, callLLM, getPersona }) {
     const bodyString = typeof payload === 'string' ? payload : JSON.stringify(payload);
 
     try {
-      await webpush.sendNotification(pushSubscription, bodyString);
+      await webpush.sendNotification(pushSubscription, bodyString, {
+        TTL: 86400,
+        urgency: 'high',
+      });
       return { success: true, endpoint: sub.endpoint };
     } catch (err) {
       // 404 or 410 Gone means the user unsubscribed or the browser revoked the token
