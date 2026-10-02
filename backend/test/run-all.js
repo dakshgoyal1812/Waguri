@@ -8,6 +8,7 @@ const tests = [
   { name: 'Milestone 3: Key Pool Manager & LLM failover', file: 'test/run-m3.js' },
   { name: 'Milestone 4: Multi-provider TTS pool & regional rotation', file: 'test/run-m4.js' },
   { name: 'Milestone 6: Load-test failover & zero-downtime invisibility', file: 'test/run-m6.js' },
+  { name: 'Account Chat Isolation & AES-256-GCM Encryption', file: 'test/test-account-chat-isolation.js' },
 ];
 
 console.log('====================================================');

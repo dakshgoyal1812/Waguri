@@ -109,7 +109,18 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
       e.status = 404;
       throw e;
     }
-    if (!conversation) conversation = await storage.createConversation({ persona_id: persona.id, user_id: userId });
+    // Strict isolation: if a requested conversation belongs to another user,
+    // prevent cross-account leak by switching to this user's own conversation
+    if (conversation && conversation.user_id && conversation.user_id !== userId) {
+      const userLatest = await storage.getLatestConversation?.(userId);
+      if (userLatest && userLatest.user_id === userId) {
+        conversation = userLatest;
+      } else {
+        conversation = await storage.createConversation({ persona_id: persona.id, user_id: userId });
+      }
+    } else if (!conversation) {
+      conversation = await storage.createConversation({ persona_id: persona.id, user_id: userId });
+    }
 
     // Snapshot recent messages BEFORE persisting the new user message — otherwise
     // the current message would appear twice in the LLM payload (recent list + the
@@ -122,7 +133,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
 
     let memories = [];
     try {
-      memories = await retrieveMemories(conversation.id, message); // step 3: top-k chunks
+      memories = await retrieveMemories({ conversation_id: conversation.id, userId, text: message }); // step 3: top-k chunks
     } catch (e) {
       // Retrieval failure must not block the reply; the exchange still gets stored.
       console.error('[rag] retrieval failed, continuing without memories:', e.message);
@@ -202,9 +213,13 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
     });
   }
 
-  async function retrieveMemories(conversation_id, text) {
+  async function retrieveMemories(paramsOrCid, textMaybe) {
+    const isObj = typeof paramsOrCid === 'object' && paramsOrCid !== null;
+    const conversation_id = isObj ? paramsOrCid.conversation_id : paramsOrCid;
+    const userId = isObj ? paramsOrCid.userId : null;
+    const text = isObj ? paramsOrCid.text : textMaybe;
     const vector = await embedder.embed(text);
-    return storage.searchMemory({ conversation_id, embedding: vector, k: ragParams().topK });
+    return storage.searchMemory({ conversation_id, userId, embedding: vector, k: ragParams().topK });
   }
 
   async function storeExchangeChunks(conversation_id, text) {

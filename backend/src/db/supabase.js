@@ -2,6 +2,7 @@
 // pgvector). Uses the Postgres connection string (DATABASE_URL) directly with pg,
 // so the Key Pool Manager queries pool state from the DB as PRD section 11 allows.
 import pg from 'pg';
+import { encryptMessage, decryptMessage } from '../crypto.js';
 
 export function createSupabaseStorage(databaseUrl) {
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 5 });
@@ -140,11 +141,12 @@ export function createSupabaseStorage(databaseUrl) {
 
     // ---- messages ----
     async addMessage({ conversation_id, role, content }) {
+      const encrypted = encryptMessage(content);
       const { rows } = await pool.query(
         'insert into messages (conversation_id, role, content) values ($1, $2, $3) returning *',
-        [conversation_id, role, content]
+        [conversation_id, role, encrypted]
       );
-      return rows[0];
+      return { ...rows[0], content }; // caller receives plain content
     },
     async getRecentMessages(conversation_id, limit) {
       const { rows } = await pool.query(
@@ -153,7 +155,7 @@ export function createSupabaseStorage(databaseUrl) {
          ) t order by created_at asc`,
         [conversation_id, limit]
       );
-      return rows;
+      return rows.map((r) => ({ ...r, content: decryptMessage(r.content) }));
     },
     async getHistory(conversation_id, { page = 1, limit = 50 }) {
       const total = await pool.query('select count(*)::int as n from messages where conversation_id = $1', [conversation_id]);
@@ -163,7 +165,8 @@ export function createSupabaseStorage(databaseUrl) {
          ) t order by created_at asc`,
         [conversation_id, limit, (page - 1) * limit]
       );
-      return { items: rows, page, limit, total: total.rows[0].n };
+      const items = rows.map((r) => ({ ...r, content: decryptMessage(r.content) }));
+      return { items, page, limit, total: total.rows[0].n };
     },
     async getLastUserMessageTime() {
       try {
@@ -178,23 +181,48 @@ export function createSupabaseStorage(databaseUrl) {
 
     // ---- memory vectors (RAG, PRD section 8: pgvector cosine similarity) ----
     async insertMemoryVector({ conversation_id, content_chunk, embedding }) {
+      const encryptedChunk = encryptMessage(content_chunk);
       const { rows } = await pool.query(
         'insert into memory_vectors (conversation_id, content_chunk, embedding) values ($1, $2, $3::vector) returning id',
-        [conversation_id, content_chunk, `[${embedding.join(',')}]`]
+        [conversation_id, encryptedChunk, `[${embedding.join(',')}]`]
       );
       return { id: rows[0].id };
     },
-    async searchMemory({ conversation_id, embedding, k }) {
+    async searchMemory({ userId, conversation_id, embedding, k }) {
       // <=> is pgvector cosine distance; 1 - distance = cosine similarity
-      // In single-user companion mode, retrieve relevant memories across all past
-      // exchanges so Waguri permanently remembers across conversations/sessions.
-      const { rows } = await pool.query(
-        `select content_chunk, created_at, 1 - (embedding <=> $1::vector) as similarity
-         from memory_vectors
-         order by embedding <=> $1::vector limit $2`,
-        [`[${embedding.join(',')}]`, k]
-      );
-      return rows;
+      // In companion mode, retrieve relevant memories strictly partitioned by user
+      let query = `
+        select mv.content_chunk, mv.created_at, 1 - (mv.embedding <=> $1::vector) as similarity
+        from memory_vectors mv
+        join conversations c on mv.conversation_id = c.id
+        where c.user_id = $3
+        order by mv.embedding <=> $1::vector limit $2
+      `;
+      let params = [`[${embedding.join(',')}]`, k, userId];
+
+      if (!userId && conversation_id) {
+        query = `
+          select mv.content_chunk, mv.created_at, 1 - (mv.embedding <=> $1::vector) as similarity
+          from memory_vectors mv
+          join conversations c on mv.conversation_id = c.id
+          where c.user_id = (select user_id from conversations where id = $3)
+          order by mv.embedding <=> $1::vector limit $2
+        `;
+        params = [`[${embedding.join(',')}]`, k, conversation_id];
+      } else if (!userId && !conversation_id) {
+        query = `
+          select content_chunk, created_at, 1 - (embedding <=> $1::vector) as similarity
+          from memory_vectors
+          order by embedding <=> $1::vector limit $2
+        `;
+        params = [`[${embedding.join(',')}]`, k];
+      }
+
+      const { rows } = await pool.query(query, params);
+      return rows.map((r) => ({
+        ...r,
+        content_chunk: decryptMessage(r.content_chunk),
+      }));
     },
 
     // ---- api_keys ----

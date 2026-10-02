@@ -35,9 +35,7 @@ export default function App() {
   // Chat history lives in Supabase (via the backend), not in localStorage.
   const [messages, setMessages] = useState([WELCOME_MESSAGE]);
 
-  const [conversationId, setConversationId] = useState(
-    () => localStorage.getItem('waguri_conversation_id') || null
-  );
+  const [conversationId, setConversationId] = useState(null);
 
   // The persona (name/traits/backstory — the "soul") is server-side data.
   // Empty until the backend answers; the UI renders fine in the meantime.
@@ -243,6 +241,8 @@ export default function App() {
   const lastActivityRef = useRef(Date.now());
   const idleBusyRef = useRef(false);
 
+  const getStorageKey = (uid) => `waguri_conversation_id_${uid || 'local-user'}`;
+
   // A stored conversation_id can go stale (backend restart wiped memory storage,
   // Supabase reset, another device). On a 404 "not found", drop the stored id and
   // retry once with a fresh conversation instead of bricking the chat.
@@ -253,7 +253,7 @@ export default function App() {
       if (err?.status === 404 && params.conversationId) {
         console.warn('[waguri] stale conversation id, starting a fresh conversation');
         setConversationId(null);
-        localStorage.removeItem('waguri_conversation_id');
+        localStorage.removeItem(getStorageKey(params.userId));
         return apiFn({ ...params, conversationId: null });
       }
       throw err;
@@ -270,26 +270,45 @@ export default function App() {
       });
   }, []);
 
-  // Persist conversationId in localStorage so page reloads do not orphan the conversation
+  // Persist conversationId in user-scoped localStorage
   useEffect(() => {
+    const uid = authUser?.email || 'local-user';
     if (conversationId) {
-      localStorage.setItem('waguri_conversation_id', conversationId);
+      localStorage.setItem(getStorageKey(uid), conversationId);
     }
-  }, [conversationId]);
+  }, [conversationId, authUser]);
 
-  // Conversation history is server-side too: on load, pull it from Supabase so
-  // the chat survives refreshes. If no conversationId is stored locally, fetch
-  // the user's latest conversation from Supabase.
+  // Conversation history is strictly partitioned per account:
+  // When authUser changes (login, logout, account switch), immediately reset messages
+  // and load only the target user's conversation.
   useEffect(() => {
-    if (conversationId) {
-      getConversationHistory(conversationId, { limit: 50 })
+    const uid = authUser?.email || 'local-user';
+    const storedId = localStorage.getItem(getStorageKey(uid));
+
+    // Reset message state immediately to prevent any cross-account visual leak
+    setMessages([WELCOME_MESSAGE]);
+
+    if (storedId) {
+      setConversationId(storedId);
+      getConversationHistory(storedId, { limit: 50, userId: uid })
         .then((h) => {
           const items = (h.items || []).map((m) => ({ role: m.role, content: m.content }));
           if (items.length) setMessages([WELCOME_MESSAGE, ...items]);
         })
-        .catch((err) => console.warn('[waguri] history load skipped:', err.message));
+        .catch((err) => {
+          console.warn('[waguri] history load skipped / stale:', err.message);
+          localStorage.removeItem(getStorageKey(uid));
+          setConversationId(null);
+          getLatestConversation(uid).then((res) => {
+            if (res?.conversation_id) {
+              setConversationId(res.conversation_id);
+              const items = (res.items || []).map((m) => ({ role: m.role, content: m.content }));
+              if (items.length) setMessages([WELCOME_MESSAGE, ...items]);
+            }
+          }).catch(() => {});
+        });
     } else {
-      const uid = authUser?.email || 'local-user';
+      setConversationId(null);
       getLatestConversation(uid)
         .then((res) => {
           if (res?.conversation_id) {
@@ -300,7 +319,7 @@ export default function App() {
         })
         .catch((err) => console.warn('[waguri] latest conversation load skipped:', err.message));
     }
-  }, [conversationId, authUser]);
+  }, [authUser]);
 
   // Periodic background health ping to keep backend warm
   useEffect(() => {
