@@ -234,9 +234,12 @@ app.post('/api/push/unsubscribe', async (req, res, next) => {
 
 app.post('/api/push/test', async (req, res, next) => {
   try {
-    const { user_id, message, title } = req.body || {};
+    const { user_id, message, title, endpoint } = req.body || {};
     const result = await pushService.sendNotification({
       userId: user_id,
+      endpoint,
+      isTest: true,
+      tag: 'waguri-manual-test',
       title: title || 'Waguri ❤️',
       body: message || 'Suno na! Push notifications perfectly work kar rahe hain ✨',
     });

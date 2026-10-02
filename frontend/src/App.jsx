@@ -14,7 +14,7 @@ import { isAdminEmail } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 import { BUNDLED_AVATARS, DEFAULT_VRM_URL, getCustomVrmBlob } from './lib/vrmStore.js';
-import { isPushSupported, getExistingSubscription, subscribeToPush, sendTestNotification, showLocalNotification } from './lib/pushClient.js';
+import { isPushSupported, getExistingSubscription, subscribeToPush, unsubscribeFromPush, sendTestNotification, showLocalNotification } from './lib/pushClient.js';
 
 // Natural emotion cycle pool for automatic, subtle idle expression transitions
 const IDLE_EMOTION_POOL = ['relaxed', 'happy', 'neutral', 'curious', 'relaxed', 'happy'];
@@ -59,18 +59,44 @@ export default function App() {
     }
   }, []);
 
+  // Sync push subscription with logged-in user email
+  useEffect(() => {
+    if (authUser?.email && pushSubscribed) {
+      subscribeToPush(authUser.email).catch((err) => {
+        console.warn('[push] silent user sync notice:', err?.message);
+      });
+    }
+  }, [authUser?.email, pushSubscribed]);
+
   const handleTogglePush = async () => {
     if (pushLoading) return;
     setPushLoading(true);
     try {
       if (pushSubscribed) {
-        await showLocalNotification('Waguri ❤️', 'Test Alert: Device par notifications bilkul active hain! ✨');
-        await sendTestNotification(authUser?.email || 'local-user');
+        const sendTest = window.confirm(
+          'Notifications are currently ON! ✨\n\n• Click OK to send a test alert to your device.\n• Click Cancel to turn notifications OFF.'
+        );
+        if (sendTest) {
+          try {
+            await sendTestNotification(authUser?.email || 'local-user');
+          } catch {
+            await showLocalNotification('Waguri ❤️', 'Test Alert: Device par notifications active hain! ✨');
+          }
+          alert('✨ Test notification sent! Check your phone / device notification tray.');
+        } else {
+          await unsubscribeFromPush();
+          setPushSubscribed(false);
+          alert('Notifications have been turned off.');
+        }
       } else {
         await subscribeToPush(authUser?.email || 'local-user');
         setPushSubscribed(true);
-        await showLocalNotification('Waguri ❤️', '🎉 Notifications Active: Waguri aapko sweet alerts bhejegi!');
-        await sendTestNotification(authUser?.email || 'local-user');
+        try {
+          await sendTestNotification(authUser?.email || 'local-user');
+        } catch {
+          await showLocalNotification('Waguri ❤️', '🎉 Notifications Active: Waguri aapko sweet alerts bhejegi!');
+        }
+        alert('🎉 Notifications enabled! Waguri will now text you on your phone notification bar.');
       }
     } catch (err) {
       console.error('[push] error:', err);

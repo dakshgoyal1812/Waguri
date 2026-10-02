@@ -3,7 +3,7 @@
 import webpush from 'web-push';
 import { config } from '../config.js';
 
-export function createPushService({ storage, callLLM, getPersona }) {
+export function createPushService({ storage, callLLM, getPersona, sendToSub = null }) {
   const rawPublic = (config.push.vapidPublicKey || '').trim().replace(/^["']|["']$/g, '');
   const rawPrivate = (config.push.vapidPrivateKey || '').trim().replace(/^["']|["']$/g, '');
   let subject = (config.push.vapidSubject || '').trim().replace(/^["']|["']$/g, '');
@@ -23,6 +23,9 @@ export function createPushService({ storage, callLLM, getPersona }) {
 
   // Send a push payload to a single subscription
   async function sendToSubscription(sub, payload) {
+    if (typeof sendToSub === 'function') {
+      return sendToSub(sub, payload);
+    }
     const pushSubscription = {
       endpoint: sub.endpoint,
       keys: {
@@ -51,9 +54,31 @@ export function createPushService({ storage, callLLM, getPersona }) {
     }
   }
 
-  // Broadcast notification to all active devices (or filtered by user_id)
-  async function sendNotification({ userId = null, title = 'Waguri ❤️', body = 'Suno na!', icon = '/logo.png', url = '/', tag = 'waguri-push' } = {}) {
-    const subs = await storage.listPushSubscriptions(userId);
+  // Broadcast notification to all active devices (or filtered by user_id or specific endpoint)
+  async function sendNotification({
+    userId = null,
+    endpoint = null,
+    isTest = false,
+    title = 'Waguri ❤️',
+    body = 'Suno na!',
+    icon = '/icons/icon-192.png',
+    url = '/',
+    tag = 'waguri-push',
+  } = {}) {
+    let subs = [];
+    if (endpoint) {
+      const allSubs = await storage.listPushSubscriptions();
+      subs = allSubs.filter((s) => s.endpoint === endpoint);
+    }
+    if (!subs.length) {
+      subs = await storage.listPushSubscriptions(userId);
+    }
+    // Fallback: if userId was specified (e.g. 'local-user' or a specific email) but had 0 rows,
+    // fallback to all registered subscriptions so notifications don't get lost
+    if (!subs.length && userId) {
+      subs = await storage.listPushSubscriptions();
+    }
+
     if (!subs.length) {
       return { sent: 0, total: 0, notice: 'No active push subscriptions found' };
     }
@@ -70,7 +95,11 @@ export function createPushService({ storage, callLLM, getPersona }) {
 
     const results = await Promise.all(subs.map((s) => sendToSubscription(s, payload)));
     const sentCount = results.filter((r) => r.success).length;
-    if (sentCount > 0) {
+
+    // Only record push notification timestamp if it is NOT a manual test!
+    // Manual tests must never block the autonomous girlfriend scheduler!
+    const isManualTest = isTest || tag.includes('test');
+    if (sentCount > 0 && !isManualTest) {
       await storage.recordPushNotification?.({ slot: tag }).catch(() => {});
     }
     return { sent: sentCount, total: subs.length, results };
@@ -135,7 +164,7 @@ export function createPushService({ storage, callLLM, getPersona }) {
       userId,
       title: `${persona.name} ❤️`,
       body: messageText,
-      icon: '/logo.png',
+      icon: '/icons/icon-192.png',
       url: '/',
       tag: `auto-waguri-${Date.now()}`,
     });
