@@ -1,6 +1,6 @@
-// Waguri AI Persona Companion — PWA Service Worker (v5)
-// v5: Added Web Push notifications support
-const CACHE_NAME = 'waguri-shell-v5';
+// Waguri AI Persona Companion — PWA Service Worker (v6)
+// v6: Optimized Web Push notifications & icons
+const CACHE_NAME = 'waguri-shell-v6';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -110,7 +110,7 @@ self.addEventListener('push', (event) => {
   const title = payload.title || 'Waguri ❤️';
   const options = {
     body: payload.body || 'Suno na, kahan ho? Ek baar baat karo na! ✨',
-    icon: payload.icon || '/logo.png',
+    icon: payload.icon || '/icons/icon-192.png',
     badge: payload.badge || '/icons/icon-192.png',
     vibrate: [200, 100, 200],
     tag: payload.tag || 'waguri-girlfriend-notification',

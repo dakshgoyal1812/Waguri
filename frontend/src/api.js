@@ -4,8 +4,8 @@
 
 // PRD section 11 names NEXT_PUBLIC_API_URL; Vite builds use VITE_API_URL. Both work.
 // If unset in production, defaults to the live Render backend: https://waguri-zhf3.onrender.com
-const PROD_DEFAULT_BACKEND = 'https://waguri-zhf3.onrender.com';
-const BASE_URL = (
+export const PROD_DEFAULT_BACKEND = 'https://waguri-zhf3.onrender.com';
+export const BASE_URL = (
   import.meta.env.VITE_API_URL ||
   import.meta.env.NEXT_PUBLIC_API_URL ||
   (import.meta.env.DEV ? '' : PROD_DEFAULT_BACKEND)

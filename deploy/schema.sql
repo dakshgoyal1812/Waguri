@@ -122,7 +122,9 @@ create table if not exists push_subscriptions (
   endpoint text not null unique,
   p256dh text not null,
   auth text not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  last_notified_at timestamptz,
+  last_slot text
 );
 create index if not exists push_subscriptions_user_idx on push_subscriptions (user_id);
 

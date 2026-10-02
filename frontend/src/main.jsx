@@ -9,9 +9,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 );
 
-// Register PWA Service Worker
+// Register PWA Service Worker safely (avoiding load event race condition)
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
+  const registerSW = () => {
     navigator.serviceWorker
       .register('/sw.js')
       .then((reg) => {
@@ -20,5 +20,11 @@ if ('serviceWorker' in navigator) {
       .catch((err) => {
         console.warn('[PWA] Service Worker registration failed:', err);
       });
-  });
+  };
+
+  if (document.readyState === 'complete') {
+    registerSW();
+  } else {
+    window.addEventListener('load', registerSW);
+  }
 }

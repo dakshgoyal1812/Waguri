@@ -23,11 +23,21 @@ export function createPushScheduler({ storage, pushService, callLLM, getPersona 
 
   function getActiveSlot(istHour, istMinute) {
     const timeVal = istHour + istMinute / 60;
-    if (timeVal >= 8.5 && timeVal < 10.5) return 'morning';
-    if (timeVal >= 13.0 && timeVal < 14.5) return 'lunch';
-    if (timeVal >= 18.0 && timeVal < 19.5) return 'evening';
-    if (timeVal >= 22.5 && timeVal < 23.75) return 'night';
+    if (timeVal >= 8.5 && timeVal < 11.0) return 'morning';  // 8:30 - 11:00 AM IST
+    if (timeVal >= 12.75 && timeVal < 15.0) return 'lunch';  // 12:45 - 3:00 PM IST
+    if (timeVal >= 18.0 && timeVal < 20.0) return 'evening'; // 6:00 - 8:00 PM IST
+    if (timeVal >= 22.0 && timeVal < 23.95) return 'night';  // 10:00 - 11:57 PM IST
     return null;
+  }
+
+  function isNearScheduledSlot(istHour, istMinute) {
+    const timeVal = istHour + istMinute / 60;
+    // Don't trigger random inactivity text right before an upcoming scheduled slot
+    if (timeVal >= 7.75 && timeVal < 8.5) return true;
+    if (timeVal >= 12.0 && timeVal < 12.75) return true;
+    if (timeVal >= 17.25 && timeVal < 18.0) return true;
+    if (timeVal >= 21.25 && timeVal < 22.0) return true;
+    return false;
   }
 
   // Core evaluation function
@@ -38,19 +48,12 @@ export function createPushScheduler({ storage, pushService, callLLM, getPersona 
     }
 
     const { istHour, istMinute, istDate, nowMs } = getISTInfo();
-    const minCooldownMs = 2 * 3600 * 1000; // 2 hours minimum throttle between any auto notifications
+    const minInactivityCooldownMs = 2 * 3600 * 1000; // 2 hours throttle between inactivity alerts
+    const minSlotGraceMs = 20 * 60 * 1000; // 20 minutes grace between any prior alert and a scheduled slot
 
     // Check both memory and DB for last push time (survives Render reboots / spin-downs)
     const dbLastPushTime = await storage.getLastPushNotificationTime?.();
     const effectiveLastPushTime = Math.max(lastPushTimestamp, dbLastPushTime || 0);
-
-    if (!force && effectiveLastPushTime && (nowMs - effectiveLastPushTime < minCooldownMs)) {
-      return {
-        sent: 0,
-        reason: 'cooldown_active',
-        remainingMinutes: Math.round((minCooldownMs - (nowMs - effectiveLastPushTime)) / 60000),
-      };
-    }
 
     const persona = getPersona ? await getPersona() : { name: 'Waguri', user_name: 'Daksh' };
     const partner = persona.user_name || 'Daksh';
@@ -73,10 +76,20 @@ export function createPushScheduler({ storage, pushService, callLLM, getPersona 
     const activeSlot = slotOverride || getActiveSlot(istHour, istMinute);
 
     // Case 1: Active Scheduled Time-of-Day Slot (Morning, Lunch, Evening, Night)
+    // Scheduled slots have top priority — only gated by already fired today or 20min grace period
     if (activeSlot && ['morning', 'lunch', 'evening', 'night'].includes(activeSlot)) {
       const slotKey = `${istDate}-${activeSlot}`;
       if (!force && firedSlots.has(slotKey)) {
         return { sent: 0, reason: 'slot_already_fired_today', slot: activeSlot };
+      }
+
+      if (!force && effectiveLastPushTime && (nowMs - effectiveLastPushTime < minSlotGraceMs)) {
+        return {
+          sent: 0,
+          reason: 'slot_short_grace_active',
+          remainingMinutes: Math.round((minSlotGraceMs - (nowMs - effectiveLastPushTime)) / 60000),
+          slot: activeSlot,
+        };
       }
 
       firedSlots.add(slotKey);
@@ -99,8 +112,16 @@ export function createPushScheduler({ storage, pushService, callLLM, getPersona 
     }
 
     // Case 2: Inactivity Check ("Miss You" / "Kahan ho?")
-    // Only check between 10:00 AM and 22:00 PM IST (never disturb sleep)
-    if (istHour >= 10 && istHour < 22) {
+    // Only check between 10:00 AM and 22:00 PM IST (never disturb sleep or clash with upcoming slot)
+    if (istHour >= 10 && istHour < 22 && !isNearScheduledSlot(istHour, istMinute)) {
+      if (!force && effectiveLastPushTime && (nowMs - effectiveLastPushTime < minInactivityCooldownMs)) {
+        return {
+          sent: 0,
+          reason: 'inactivity_cooldown_active',
+          remainingMinutes: Math.round((minInactivityCooldownMs - (nowMs - effectiveLastPushTime)) / 60000),
+        };
+      }
+
       const lastUserMsgTime = await storage.getLastUserMessageTime?.();
       const inactivityThresholdMs = 2.5 * 3600 * 1000; // 2.5 hours of user silence
 
@@ -138,6 +159,7 @@ export function createPushScheduler({ storage, pushService, callLLM, getPersona 
       activeSlot: getActiveSlot(istHour, istMinute),
     };
   }
+
 
   function start(intervalMs = 300_000) { // check every 5 minutes
     if (tickerHandle) clearInterval(tickerHandle);
