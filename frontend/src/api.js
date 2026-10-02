@@ -27,7 +27,7 @@ async function handleResponse(res) {
   return res.json();
 }
 
-export async function sendMessage({ conversationId, personaId, userId, message }) {
+export async function sendMessage({ conversationId, personaId, userId, message, avatarId }) {
   const res = await fetch(`${BASE_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -36,6 +36,7 @@ export async function sendMessage({ conversationId, personaId, userId, message }
       persona_id: personaId,
       user_id: userId || 'local-user',
       message,
+      avatar_id: avatarId,
     }),
   });
   return handleResponse(res);
@@ -43,7 +44,7 @@ export async function sendMessage({ conversationId, personaId, userId, message }
 
 // Feeling layer: ask the backend for a spontaneous in-character line after the
 // user has been quiet for a while.
-export async function fetchIdleComment({ conversationId, personaId, idleSeconds }) {
+export async function fetchIdleComment({ conversationId, personaId, idleSeconds, avatarId }) {
   const res = await fetch(`${BASE_URL}/api/idle-comment`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -51,6 +52,7 @@ export async function fetchIdleComment({ conversationId, personaId, idleSeconds 
       conversation_id: conversationId,
       persona_id: personaId,
       idle_seconds: idleSeconds,
+      avatar_id: avatarId,
     }),
   });
   return handleResponse(res);
@@ -79,11 +81,51 @@ export async function getPersona(personaId) {
 // Mint a FRESH audio URL for a message's text. The backend audio cache is
 // in-memory, so audio_url values from earlier messages die on restart — this
 // re-synthesizes on demand and keeps the avatar's lip-sync always working.
-export async function synthesizeToUrl(text, mood) {
+export async function synthesizeToUrl(text, mood, avatarId) {
   const res = await fetch(`${BASE_URL}/api/tts/url`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, mood }),
+    body: JSON.stringify({ text, mood, avatar_id: avatarId }),
+  });
+  return handleResponse(res);
+}
+
+// --- Alarms & Reminders API (Option 5: Background Web Push) ---
+export async function fetchAlarms(userId = 'local-user') {
+  const res = await fetch(`${BASE_URL}/api/alarms?user_id=${encodeURIComponent(userId)}`);
+  return handleResponse(res);
+}
+
+export async function saveAlarm(alarm) {
+  const res = await fetch(`${BASE_URL}/api/alarms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(alarm),
+  });
+  return handleResponse(res);
+}
+
+export async function deleteAlarm(id) {
+  const res = await fetch(`${BASE_URL}/api/alarms/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  return handleResponse(res);
+}
+
+export async function toggleAlarm(id, enabled) {
+  const res = await fetch(`${BASE_URL}/api/alarms/${encodeURIComponent(id)}/toggle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  return handleResponse(res);
+}
+
+export async function testAlarmPush({ title, message, type = 'alarm', userId = 'local-user' } = {}) {
+  const res = await fetch(`${BASE_URL}/api/alarms/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, message, type, user_id: userId }),
   });
   return handleResponse(res);
 }

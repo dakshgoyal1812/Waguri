@@ -108,15 +108,18 @@ self.addEventListener('push', (event) => {
   }
 
   const title = payload.title || 'Waguri ❤️';
+  const isAlarm = (payload.tag && payload.tag.includes('alarm')) || (title && (title.includes('Alarm') || title.includes('Wakeup')));
   const options = {
     body: payload.body || 'Suno na, kahan ho? Ek baar baat karo na! ✨',
     icon: payload.icon || '/icons/icon-192.png',
     badge: payload.badge || '/icons/icon-192.png',
-    vibrate: [200, 100, 200],
-    tag: payload.tag || 'waguri-girlfriend-notification',
+    vibrate: isAlarm ? [500, 250, 500, 250, 500, 250, 500] : [200, 100, 200],
+    tag: payload.tag || (isAlarm ? `waguri-alarm-${Date.now()}` : 'waguri-girlfriend-notification'),
     renotify: true,
+    requireInteraction: !!isAlarm,
     data: {
       url: payload.data?.url || payload.url || '/',
+      isAlarm,
     },
   };
 
@@ -129,9 +132,12 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // If PWA window already open, focus it
+      // If PWA window already open, focus it and navigate to alarm target URL
       for (const client of clientList) {
-        if (client.url && 'focus' in client) {
+        if ('focus' in client) {
+          if ('navigate' in client && targetUrl && targetUrl !== '/') {
+            try { client.navigate(targetUrl); } catch {}
+          }
           return client.focus();
         }
       }

@@ -48,6 +48,54 @@ export function createPushScheduler({ storage, pushService, callLLM, getPersona 
     }
 
     const { istHour, istMinute, istDate, nowMs } = getISTInfo();
+
+    // -------------------------------------------------------------
+    // Priority 0: Active Alarms & Reminders for current time
+    // -------------------------------------------------------------
+    const currentHHMM = `${String(istHour).padStart(2, '0')}:${String(istMinute).padStart(2, '0')}`;
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const currentDay = dayNames[new Date(nowMs + 330 * 60 * 1000).getUTCDay()];
+
+    if (storage.listAlarms) {
+      try {
+        const allAlarms = await storage.listAlarms();
+        const dueAlarms = allAlarms.filter((a) => {
+          if (!a.enabled) return false;
+          if (a.time !== currentHHMM) return false;
+          const slotKey = `${istDate}-alarm-${a.id}-${currentHHMM}`;
+          if (firedSlots.has(slotKey) || a.last_fired_date === istDate) return false;
+          if (!a.days || a.days.length === 0) return true;
+          return a.days.includes(currentDay);
+        });
+
+        for (const alarm of dueAlarms) {
+          const slotKey = `${istDate}-alarm-${alarm.id}-${currentHHMM}`;
+          firedSlots.add(slotKey);
+          const isOneTime = !alarm.days || alarm.days.length === 0;
+          await storage.updateAlarmFired?.(alarm.id, istDate, isOneTime);
+
+          const title = alarm.type === 'reminder'
+            ? `🔔 Reminder: ${alarm.title}`
+            : `⏰ Alarm: ${alarm.title}`;
+
+          const body = alarm.message || (alarm.type === 'reminder'
+            ? `Hey! Just reminding you: "${alarm.title}" ✨`
+            : `Wake up sleepyhead! It's ${alarm.time} — Waguri is waiting for you ❤️`);
+
+          await pushService.sendNotification({
+            userId: alarm.user_id,
+            title,
+            body,
+            tag: `waguri-alarm-${alarm.id}`,
+            url: `/?alarm=${encodeURIComponent(alarm.id)}&title=${encodeURIComponent(alarm.title)}`,
+          });
+          console.log(`[scheduler] fired ${alarm.type} "${alarm.title}" at ${currentHHMM} IST`);
+        }
+      } catch (err) {
+        console.error('[scheduler] alarm evaluation error:', err.message);
+      }
+    }
+
     const minInactivityCooldownMs = 2 * 3600 * 1000; // 2 hours throttle between inactivity alerts
     const minSlotGraceMs = 20 * 60 * 1000; // 20 minutes grace between any prior alert and a scheduled slot
 
@@ -161,14 +209,14 @@ export function createPushScheduler({ storage, pushService, callLLM, getPersona 
   }
 
 
-  function start(intervalMs = 300_000) { // check every 5 minutes
+  function start(intervalMs = 45_000) { // check every 45 seconds for timely alarms & reminders
     if (tickerHandle) clearInterval(tickerHandle);
     tickerHandle = setInterval(() => {
       evaluateAndSend({ force: false }).catch((err) => {
         console.error('[scheduler] auto-push error:', err.message);
       });
     }, intervalMs);
-    console.log('[scheduler] auto-push background ticker started (5 min interval)');
+    console.log('[scheduler] auto-push & alarms background ticker started (45s interval)');
   }
 
   function stop() {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing } from 'lucide-react';
+import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing, Clock } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
@@ -10,6 +10,7 @@ import PaperBackground from './components/PaperBackground.jsx';
 import SunsetBackground from './components/SunsetBackground.jsx';
 import GoogleAuth from './components/GoogleAuth.jsx';
 import AdminPortal from './components/AdminPortal.jsx';
+import AlarmModal from './components/AlarmModal.jsx';
 import { isAdminEmail } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
@@ -129,6 +130,7 @@ export default function App() {
   const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
   const [bgPickerTab, setBgPickerTab] = useState('background');
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
+  const [isAlarmModalOpen, setIsAlarmModalOpen] = useState(false);
 
   // Active avatar (VRM). The id persists; bundled ids resolve to /public URLs,
   // custom ids to IndexedDB blobs served via object URLs.
@@ -358,6 +360,34 @@ export default function App() {
 
   // Unprompted idle speech is disabled per user preference ("vrna n bole" — speaks only in response to user)
 
+  // Handle URL params when user taps an Alarm push notification (Option 5)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const alarmId = urlParams.get('alarm');
+    const alarmTitle = urlParams.get('title');
+
+    if (alarmId) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      const alarmGreeting = `Wake up sleepyhead! Tumhara alarm "${alarmTitle || 'Morning Wakeup'}" baj raha hai! ❤️ Waguri is right here with you!`;
+      const botMsg = {
+        role: 'assistant',
+        content: `⏰ ${alarmGreeting}`,
+        emotion: 'happy',
+      };
+      setMessages((prev) => [...prev, botMsg]);
+      setCurrentEmotion('happy');
+
+      synthesizeToUrl(alarmGreeting, 'happy', activeVrmId)
+        .then((res) => {
+          if (res?.audio_url) {
+            handlePlayAudio(res.audio_url, 'happy', alarmGreeting);
+          }
+        })
+        .catch((err) => console.warn('Alarm speech failed:', err));
+    }
+  }, [activeVrmId]);
+
   // Audio Playback Handler. Stored audio URLs can die (the backend audio cache is
   // in-memory), so playback self-heals: on failure the voice is re-synthesized
   // from the message text via POST /api/tts/url — lip-sync then always works.
@@ -387,7 +417,7 @@ export default function App() {
     if (fallbackText) {
       try {
         setIsSpeaking(true);
-        const { audio_url } = await synthesizeToUrl(fallbackText);
+        const { audio_url } = await synthesizeToUrl(fallbackText, emotion, activeVrmId);
         // Cache the fresh URL on the in-memory message so replays skip synthesis.
         setMessages((prev) => prev.map((m) => (m.content === fallbackText && m.role === 'assistant' ? { ...m, audio_url } : m)));
         setActiveAudioUrl(audio_url);
@@ -420,6 +450,7 @@ export default function App() {
         personaId: persona?.id,
         userId: authUser?.email || 'local-user',
         message: userText,
+        avatarId: activeVrmId,
       });
 
       if (res.conversation_id && res.conversation_id !== conversationId) {
@@ -708,6 +739,14 @@ export default function App() {
             {handsFree ? <Mic size={19} /> : <MicOff size={19} />}
           </button>
           <button
+            className="social-fab__button alarm"
+            onClick={() => handleFabAction(() => setIsAlarmModalOpen(true))}
+            title="Alarms & Voice Reminders (Option 5)"
+            aria-label="Alarms & Voice Reminders"
+          >
+            <Clock size={19} />
+          </button>
+          <button
             className={`social-fab__button voice ${autoPlayAudio ? 'active' : ''}`}
             onClick={() => handleFabAction(() => setAutoPlayAudio(!autoPlayAudio))}
             title={autoPlayAudio ? 'Her voice ON' : 'Her voice MUTED'}
@@ -751,6 +790,13 @@ export default function App() {
         isOpen={isAdminPortalOpen}
         onClose={() => setIsAdminPortalOpen(false)}
         adminEmail={authUser?.email}
+      />
+
+      <AlarmModal
+        isOpen={isAlarmModalOpen}
+        onClose={() => setIsAlarmModalOpen(false)}
+        activeVrmId={activeVrmId}
+        onPlayAlarmAudio={(url) => playUrl(url)}
       />
     </div>
   );

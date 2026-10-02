@@ -758,7 +758,7 @@ body {
    every button stays inside the viewport even when the trigger sits in the
    bottom-right corner. The trailing rotate(-θ) keeps icons upright. */
 .social-fab__button {
-  --angle: calc(180deg + var(--index, 0) * 30deg);
+  --angle: calc(180deg + var(--index, 0) * 22.5deg);
 
   position: absolute;
   left: calc(50% - var(--size-button) / 2);
@@ -800,15 +800,16 @@ body {
 /* Per-action colors (R, G, B triplets for rgba()) */
 .social-fab__button.chat   { --color: 34, 184, 207; }  /* app cyan — chat panel */
 .social-fab__button.mic    { --color: 244, 114, 182; } /* app pink — hands-free mic */
-.social-fab__button.game   { --color: 168, 85, 247; }  /* logo purple — games */
+.social-fab__button.alarm  { --color: 245, 158, 11; }  /* amber gold — alarms & reminders */
 .social-fab__button.voice  { --color: 251, 146, 60; }  /* voice energy orange */
 .social-fab__button.bg     { --color: 99, 102, 241; }  /* theme indigo — background picker */
 
-/* Arc order: left → up */
+/* Arc order: left → up (5 buttons across 90-degree quadrant) */
 .social-fab__button:nth-child(1) { --index: 0; }
 .social-fab__button:nth-child(2) { --index: 1; }
 .social-fab__button:nth-child(3) { --index: 2; }
 .social-fab__button:nth-child(4) { --index: 3; }
+.social-fab__button:nth-child(5) { --index: 4; }
 
 /* Hover affordances are DESKTOP-ONLY polish (color fill, trigger scale).
    Opening/closing is a click/tap toggle on every device — hover-open mixed
@@ -929,6 +930,51 @@ body {
 .vrm-delete:hover {
   background: rgba(239, 68, 68, 0.95);
   transform: scale(1.08);
+}
+
+.vrm-voice-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.12);
+  padding: 2px 7px;
+  border-radius: 6px;
+  margin-top: 4px;
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  width: fit-content;
+}
+
+.vrm-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  touch-action: manipulation;
+}
+.vrm-preview-btn:hover {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: rgba(168, 85, 247, 0.4);
+  color: #fff;
+}
+.vrm-preview-btn.playing {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.3), rgba(168, 85, 247, 0.3));
+  border-color: rgba(236, 72, 153, 0.5);
+  color: #f472b6;
+  animation: pulse 1.5s infinite;
 }
 
 /* ============ modals ============ */
@@ -3681,5 +3727,552 @@ body {
   .bg-room-mobile-wallpaper {
     display: block !important;
   }
+}
+
+/* ============ Alarm & Reminder Modal (Option 5: Background Web Push) ============ */
+.alarm-modal-content {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
+  border-radius: 24px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: min(88vh, 700px);
+}
+
+.alarm-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.alarm-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.alarm-header-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+}
+
+.alarm-modal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary, #0f172a);
+  letter-spacing: -0.01em;
+}
+
+.alarm-modal-subtitle {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #64748b);
+  font-weight: 500;
+}
+
+.alarm-toast-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin: 12px 20px 0;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(239, 68, 68, 0.15));
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #b45309;
+  animation: fadeIn 0.25s ease;
+}
+
+.alarm-push-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  margin: 12px 20px 0;
+  border-radius: 14px;
+  font-size: 0.78rem;
+}
+
+.alarm-push-alert.warning {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #92400e;
+}
+
+.alarm-push-alert.success {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #065f46;
+  font-weight: 600;
+}
+
+.alarm-push-alert.error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #991b1b;
+}
+
+.alarm-push-alert-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.alarm-push-alert-text strong {
+  display: block;
+  font-size: 0.82rem;
+}
+
+.alarm-push-alert-text p {
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  opacity: 0.9;
+}
+
+.alarm-enable-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+.alarm-enable-btn:hover { background: #d97706; transform: scale(1.04); }
+
+.alarm-presets-section {
+  padding: 12px 20px 8px;
+}
+
+.alarm-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #94a3b8);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.alarm-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.alarm-preset-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+.alarm-preset-card:hover {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.3);
+  transform: translateY(-1px);
+}
+.preset-icon { font-size: 1.25rem; }
+.preset-info { flex: 1; min-width: 0; }
+.preset-title { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-primary, #0f172a); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.preset-time { font-size: 0.68rem; color: #f59e0b; font-weight: 600; }
+.preset-plus { color: #94a3b8; }
+
+.alarm-list-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 20px 16px;
+}
+
+.alarm-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.alarm-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #b45309;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.alarm-add-btn:hover { background: #f59e0b; color: #fff; }
+
+.alarm-empty-state {
+  text-align: center;
+  padding: 30px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.alarm-empty-state h4 { margin: 0; font-size: 0.95rem; font-weight: 700; color: var(--text-primary); }
+.alarm-empty-state p { margin: 0; font-size: 0.76rem; color: var(--text-muted); max-width: 320px; }
+
+.alarm-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alarm-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 16px;
+  transition: all 0.2s ease;
+}
+.alarm-card.disabled {
+  opacity: 0.6;
+  filter: grayscale(0.2);
+}
+.alarm-card:hover {
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+}
+
+.alarm-card-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.alarm-time-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alarm-time-digits {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--text-primary, #0f172a);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.alarm-type-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.alarm-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+
+.alarm-card-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.alarm-card-days, .alarm-card-voice {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.alarm-card-message {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--text-secondary);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.alarm-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alarm-test-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: #4f46e5;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+}
+.alarm-test-btn:hover { background: #4f46e5; color: #fff; }
+
+.alarm-delete-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.alarm-delete-btn:hover { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+
+/* Switch Slider */
+.alarm-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+}
+.alarm-switch input { opacity: 0; width: 0; height: 0; }
+.alarm-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: #cbd5e1;
+  transition: 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  border-radius: 34px;
+}
+.alarm-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.alarm-switch input:checked + .alarm-slider { background-color: #f59e0b; }
+.alarm-switch input:checked + .alarm-slider:before { transform: translateX(18px); }
+
+/* Form styles */
+.alarm-add-form {
+  padding: 12px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.alarm-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.alarm-form-title { margin: 0; font-size: 0.95rem; font-weight: 800; color: var(--text-primary); }
+.alarm-cancel-btn { background: none; border: none; font-size: 0.78rem; color: var(--text-muted); cursor: pointer; }
+.alarm-cancel-btn:hover { color: var(--text-primary); }
+
+.alarm-type-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 3px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+}
+
+.alarm-type-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.alarm-type-tab.active {
+  background: #fff;
+  color: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.alarm-form-field { display: flex; flex-direction: column; gap: 4px; }
+.alarm-field-row { display: flex; align-items: center; justify-content: space-between; }
+.alarm-label { font-size: 0.72rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
+
+.alarm-time-input {
+  font-size: 1.4rem;
+  font-weight: 800;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--text-primary);
+}
+
+.alarm-text-input, .alarm-select-input, .alarm-textarea-input {
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+.alarm-days-quick { display: flex; gap: 4px; }
+.alarm-quick-day-btn {
+  font-size: 0.65rem;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.alarm-quick-day-btn:hover { background: rgba(0, 0, 0, 0.05); color: var(--text-primary); }
+
+.alarm-days-picker {
+  display: flex;
+  gap: 5px;
+  margin-top: 4px;
+}
+.alarm-day-pill {
+  flex: 1;
+  padding: 6px 0;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.alarm-day-pill.active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.alarm-preview-voice-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  color: #9333ea;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.alarm-preview-voice-btn:hover { background: #9333ea; color: #fff; }
+
+.alarm-submit-btn {
+  padding: 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  border-radius: 12px;
+  margin-top: 4px;
+}
+
+.alarm-modal-footer {
+  padding: 12px 20px;
+  background: rgba(0, 0, 0, 0.02);
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.alarm-footer-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 200px;
+}
+
+.alarm-quick-test-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #b45309;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.alarm-quick-test-action:hover {
+  background: #f59e0b;
+  color: #fff;
 }
 
