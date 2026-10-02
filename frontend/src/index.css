@@ -3607,3 +3607,79 @@ body {
   font-weight: 600;
   animation: pulse 1.2s ease-in-out infinite;
 }
+
+/* ==========================================================================
+   Room Background: 3D Stage on Desktop vs Aesthetic Anime Room Wallpaper on Phone
+   ========================================================================== */
+.bg-room-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.bg-room-desktop-ambience {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 30%, rgba(254, 243, 199, 0.22) 0%, rgba(30, 27, 75, 0.85) 100%), #1e1b4b;
+}
+
+.bg-room-mobile-wallpaper {
+  position: absolute;
+  inset: 0;
+  background-image: url('/room-phone.jpg');
+  background-position: center bottom;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.bg-room-mobile-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 8, 24, 0.35) 0%,
+    rgba(10, 8, 24, 0.08) 40%,
+    rgba(10, 8, 24, 0.20) 70%,
+    rgba(8, 6, 20, 0.65) 100%
+  );
+  pointer-events: none;
+}
+
+.bg-room-mobile-glow {
+  position: absolute;
+  top: 32%;
+  left: 10%;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 214, 153, 0.26) 0%, rgba(255, 170, 70, 0.08) 55%, transparent 75%);
+  pointer-events: none;
+  filter: blur(28px);
+  animation: lampWarmthGlow 6s ease-in-out infinite alternate;
+}
+
+@keyframes lampWarmthGlow {
+  0% { opacity: 0.65; transform: scale(0.95); }
+  100% { opacity: 1.0; transform: scale(1.05); }
+}
+
+@media (min-width: 769px) {
+  /* On Laptop / Desktop: 3D model in Three.js is active; wallpaper hidden */
+  .bg-room-mobile-wallpaper {
+    display: none !important;
+  }
+  .bg-room-desktop-ambience {
+    display: block !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* On Mobile / Phone: 3D model is disabled; aesthetic anime wallpaper shown */
+  .bg-room-desktop-ambience {
+    display: none !important;
+  }
+  .bg-room-mobile-wallpaper {
+    display: block !important;
+  }
+}
+

@@ -217,6 +217,14 @@ const getDeviceTier = () => {
   return 'desktop';
 };
 
+// 3D model room (.glb) is strictly for laptop / desktop (>= 769px); phones use the anime room wallpaper
+const isLaptopOrDesktop = (w) => {
+  if (typeof window === 'undefined') return false;
+  const width = w !== undefined ? w : window.innerWidth;
+  const tier = getDeviceTier();
+  return tier !== 'mobile' && width >= 769;
+};
+
 export default function AvatarCanvas({
   currentEmotion = 'neutral',
   audioElement = null,
@@ -243,10 +251,13 @@ export default function AvatarCanvas({
   const [retryKey, setRetryKey] = useState(0); // bumped by the Retry button
 
   // Synchronize 3D room visibility dynamically without rebuilding VRM
+  // 3D model room is strictly enabled on laptop/desktop (>= 769px); on phone, wallpaper is used
   useEffect(() => {
-    showRoomRef.current = showRoom;
+    const isDesktop = isLaptopOrDesktop();
+    const active = Boolean(showRoom && isDesktop);
+    showRoomRef.current = active;
     if (roomGroupRef.current) {
-      roomGroupRef.current.visible = Boolean(showRoom);
+      roomGroupRef.current.visible = active;
     }
   }, [showRoom]);
 
@@ -442,6 +453,10 @@ export default function AvatarCanvas({
       tierRef.current = getDeviceTier();
       isTouch.current = isTouchDevice();
       lookState.current.isTouch = isTouch.current;
+      const isDesktop = isLaptopOrDesktop(window.innerWidth);
+      if (roomGroupRef.current) {
+        roomGroupRef.current.visible = Boolean(showRoomRef.current && isDesktop);
+      }
     };
     mqlMobile.addEventListener('change', updateTier);
     mqlTablet.addEventListener('change', updateTier);
@@ -477,22 +492,11 @@ export default function AvatarCanvas({
     // Responsive camera framing for phones vs tablets vs desktop
     const getTargetCameraParams = (w, h, isChatOpen, tier) => {
       const currentTier = tier || getDeviceTier();
-      const isRoom = Boolean(showRoomRef.current);
+      const isDesktop = isLaptopOrDesktop(w);
       const aspect = w / h;
 
-      if (currentTier === 'mobile' || aspect < 0.75) {
-        // Phone with floating transparent chat overlay:
-        if (isRoom) {
-          // Optimized for 3D room stage on phone portrait:
-          // Slightly pulled back with gentle angle so the living room couch,
-          // floor, and decor surround her naturally instead of appearing cramped/zoomed in.
-          return {
-            pos: new THREE.Vector3(0, 1.02, 2.42),
-            look: new THREE.Vector3(0, 0.90, 0),
-            fov: 37,
-          };
-        }
-        // Balanced portrait framing centered nicely behind the floating messages
+      if (currentTier === 'mobile' || aspect < 0.75 || !isDesktop) {
+        // Phone portrait: standard centered framing, zero clipping from 3D room meshes
         return {
           pos: new THREE.Vector3(0, 1.00, 2.25),
           look: new THREE.Vector3(0, 0.94, 0),
@@ -666,7 +670,7 @@ export default function AvatarCanvas({
         });
         roomGroup.add(roomScene);
         applyRoomLayout(width, height, tierRef.current);
-        roomGroup.visible = showRoomRef.current;
+        roomGroup.visible = Boolean(showRoomRef.current && isLaptopOrDesktop(width));
       },
       undefined,
       (err) => {
@@ -674,8 +678,8 @@ export default function AvatarCanvas({
       }
     );
 
-    // Set initial visibility
-    roomGroup.visible = showRoomRef.current;
+    // Set initial visibility (laptop/desktop only)
+    roomGroup.visible = Boolean(showRoomRef.current && isLaptopOrDesktop(width));
 
     let disposed = false;
     let cleanupModel = null;
@@ -897,13 +901,20 @@ export default function AvatarCanvas({
       height = newH || container.clientHeight || 500;
       if (width === 0 || height === 0) return;
 
+      const isDesktop = isLaptopOrDesktop(width);
+      if (roomGroupRef.current) {
+        roomGroupRef.current.visible = Boolean(showRoomRef.current && isDesktop);
+      }
+
       camera.aspect = width / height;
       const targetParams = getTargetCameraParams(width, height, chatOpenRef.current, tierRef.current);
       camera.fov = targetParams.fov;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPr));
-      applyRoomLayout(width, height, tierRef.current);
+      if (isDesktop) {
+        applyRoomLayout(width, height, tierRef.current);
+      }
     };
 
     let resizeObserver = null;
