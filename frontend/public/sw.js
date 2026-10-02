@@ -1,9 +1,6 @@
-// Waguri AI Persona Companion — PWA Service Worker (v4)
-// v4: cache version bumped AND navigations switched to network-first.
-// The old stale-while-revalidate shell kept serving the previous UI build
-// (old mood bar cut off at the bottom) even after redeploy, because the
-// cached hashed assets could never revalidate against a changed build.
-const CACHE_NAME = 'waguri-shell-v4';
+// Waguri AI Persona Companion — PWA Service Worker (v5)
+// v5: Added Web Push notifications support
+const CACHE_NAME = 'waguri-shell-v5';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
