@@ -22,9 +22,9 @@ import { createMoodEngine } from './mood/engine.js';
 import { waguriMoods } from './moodSeed.js';
 import { waguriPersona } from './personaSeed.js';
 import { createGamesModule } from './games/index.js';
-import { storeAudio } from './audioCache.js';
-import { getAudio } from './audioCache.js';
+import { storeAudio, getAudio } from './audioCache.js';
 import { createPushService } from './push/index.js';
+import { createPushScheduler } from './push/scheduler.js';
 
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a proxy; request host must survive
@@ -87,6 +87,16 @@ const pushService = createPushService({
   getPersona: async () => await storage.getDefaultPersona(),
 });
 
+const pushScheduler = createPushScheduler({
+  storage,
+  pushService,
+  callLLM,
+  getPersona: async () => await storage.getDefaultPersona(),
+});
+
+// Start background 5-minute autonomous evaluation ticker
+pushScheduler.start(300_000);
+
 // Absolute audio URLs need the request origin when PUBLIC_BASE_URL is unset.
 app.use((req, _res, next) => {
   globalThis.__waguriRequestBase = () =>
@@ -103,11 +113,17 @@ const requireAdmin = (req, res, next) => {
 
 // Health check keepalive endpoints (cron-job.org / Render health check / Uptime monitoring)
 const handleHealth = (_req, res) => {
+  // Evaluate autonomous notification slots on every keepalive ping
+  pushScheduler.evaluateAndSend({ force: false }).catch((err) => {
+    console.error('[health-scheduler] evaluate error:', err.message);
+  });
+
   res.status(200).json({
     ok: true,
     service: 'waguri-backend',
     uptime_s: Math.round(process.uptime()),
     storage: storage.kind,
+    scheduler: pushScheduler.getStatus(),
   });
 };
 
@@ -174,12 +190,15 @@ app.get('/api/push/vapid-public-key', (_req, res) => {
 app.get('/api/push/status', async (_req, res, next) => {
   try {
     const subs = await storage.listPushSubscriptions();
+    const lastNotified = await storage.getLastPushNotificationTime?.();
     res.json({
       configured: !!(config.push.vapidPublicKey && config.push.vapidPrivateKey),
       publicKeyPrefix: config.push.vapidPublicKey ? config.push.vapidPublicKey.slice(0, 10) + '...' : null,
       privateKeyLength: config.push.vapidPrivateKey ? config.push.vapidPrivateKey.length : 0,
       subject: config.push.vapidSubject,
       subscriptionsCount: subs.length,
+      lastPushNotificationAt: lastNotified ? new Date(lastNotified).toISOString() : null,
+      scheduler: pushScheduler.getStatus(),
     });
   } catch (e) { next(e); }
 });
@@ -221,11 +240,12 @@ app.post('/api/push/test', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Automated girlfriend push trigger (hits via cron-job.org / external cron / admin)
+// Automated girlfriend push trigger (hits via cron-job.org / external cron / admin / manual testing)
 app.all('/api/push/trigger-auto', async (req, res, next) => {
   try {
-    const userId = req.body?.user_id || req.query?.user_id || null;
-    const result = await pushService.sendAutoGirlfriendMessage({ userId });
+    const force = req.query?.force === 'true' || req.body?.force === true;
+    const slot = req.query?.slot || req.body?.slot || null;
+    const result = await pushScheduler.evaluateAndSend({ force, slotOverride: slot });
     res.json({ ok: true, result });
   } catch (e) { next(e); }
 });
@@ -542,6 +562,7 @@ const server = app.listen(config.port, () => {
 // Ensure dirty key-pool state is flushed on shutdown.
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
+    pushScheduler.stop();
     server.close();
     keyPool.stop().finally(() => process.exit(0));
   });
