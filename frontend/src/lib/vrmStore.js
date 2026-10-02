@@ -9,13 +9,13 @@ const STORE = 'vrms';
 
 export const BUNDLED_AVATARS = [
   { id: 'waguri', name: 'Waguri', url: '/waguri.vrm', desc: 'Default companion', thumb: '/avatars/waguri.png' },
-  { id: 'zero', name: 'Zero', url: '/Zero.vrm', desc: 'Bundled VRoid avatar', thumb: '/avatars/zero.png' },
-  { id: 'vrm3', name: 'VRM 3 (Sample B)', url: '/vrm3.vrm', desc: 'Pixiv VRoid Avatar B', thumb: '/avatars/vrm3.png' },
-  { id: 'vrm4', name: 'VRM 4 (Sample E)', url: '/vrm4.vrm', desc: 'Pixiv VRoid Avatar E', thumb: '/avatars/vrm4.png' },
-  { id: 'vrm6', name: 'VRM 6 (Sample Y)', url: '/vrm6.vrm', desc: 'Pixiv VRoid Avatar Y', thumb: '/avatars/vrm6.png' },
-  { id: 'vrm7', name: 'VRM 7 (Sample K)', url: '/vrm7.vrm', desc: 'Pixiv VRoid Avatar K', thumb: '/avatars/vrm7.png' },
-  { id: 'vrm8', name: 'VRM 8 (Sample W)', url: '/vrm8.vrm', desc: 'Pixiv VRoid Avatar W', thumb: '/avatars/vrm8.png' },
-  { id: 'vrm9', name: 'VRM 9 (Sample Q)', url: '/vrm9.vrm', desc: 'Pixiv VRoid Avatar Q', thumb: '/avatars/vrm9.png' },
+  { id: 'zero', name: 'Zero', url: '/Zero.vrm', desc: 'Cyberpunk heroine', thumb: '/avatars/zero.png' },
+  { id: 'vrm3', name: 'Aoi', url: '/vrm3.vrm', desc: 'Cheerful high school girl', thumb: '/avatars/vrm3.png' },
+  { id: 'vrm4', name: 'Elysia', url: '/vrm4.vrm', desc: 'Graceful forest elf', thumb: '/avatars/vrm4.png' },
+  { id: 'vrm6', name: 'Yuna', url: '/vrm6.vrm', desc: 'Bright sunshine idol', thumb: '/avatars/vrm6.png' },
+  { id: 'vrm7', name: 'Kuroha', url: '/vrm7.vrm', desc: 'Mysterious gothic beauty', thumb: '/avatars/vrm7.png' },
+  { id: 'vrm8', name: 'Hikari', url: '/vrm8.vrm', desc: 'Gentle pastel dreamer', thumb: '/avatars/vrm8.png' },
+  { id: 'vrm9', name: 'Chiyo', url: '/vrm9.vrm', desc: 'Sweet & bubbly cutie', thumb: '/avatars/vrm9.png' },
 ];
 
 export const DEFAULT_VRM_URL = '/waguri.vrm';
