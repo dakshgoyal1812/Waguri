@@ -101,6 +101,18 @@ export function createMemoryStorage() {
       const items = all.slice(start, start + limit).map(clone); // newest page first, oldest-first inside
       return { items, page, limit, total };
     },
+    async getLastUserMessageTime() {
+      let latest = null;
+      for (const list of db.messages.values()) {
+        for (const m of list) {
+          if (m.role === 'user') {
+            const t = new Date(m.created_at).getTime();
+            if (!latest || t > latest) latest = t;
+          }
+        }
+      }
+      return latest;
+    },
 
     // ---- memory vectors (RAG) ----
     async insertMemoryVector({ conversation_id, content_chunk, embedding }) {
@@ -200,6 +212,25 @@ export function createMemoryStorage() {
     },
     async deletePushSubscription(endpoint) {
       return db.pushSubscriptions.delete(endpoint);
+    },
+    async recordPushNotification({ endpoint, slot } = {}) {
+      const nowIso = new Date().toISOString();
+      if (endpoint && db.pushSubscriptions.has(endpoint)) {
+        const row = db.pushSubscriptions.get(endpoint);
+        row.last_notified_at = nowIso;
+        if (slot) row.last_slot = slot;
+      } else {
+        for (const row of db.pushSubscriptions.values()) {
+          row.last_notified_at = nowIso;
+          if (slot) row.last_slot = slot;
+        }
+      }
+    },
+    async getLastPushNotificationTime(userId) {
+      const subs = [...db.pushSubscriptions.values()].filter((s) => !userId || s.user_id === userId);
+      const times = subs.map((s) => (s.last_notified_at ? new Date(s.last_notified_at).getTime() : 0));
+      const max = Math.max(0, ...times);
+      return max > 0 ? max : null;
     },
 
     // test hook

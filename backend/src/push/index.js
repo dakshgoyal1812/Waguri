@@ -70,6 +70,9 @@ export function createPushService({ storage, callLLM, getPersona }) {
 
     const results = await Promise.all(subs.map((s) => sendToSubscription(s, payload)));
     const sentCount = results.filter((r) => r.success).length;
+    if (sentCount > 0) {
+      await storage.recordPushNotification?.({ slot: tag }).catch(() => {});
+    }
     return { sent: sentCount, total: subs.length, results };
   }
 

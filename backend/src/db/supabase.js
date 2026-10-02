@@ -25,14 +25,18 @@ export function createSupabaseStorage(databaseUrl) {
             ('goyaldaksh284@gmail.com', 'system')
           on conflict (email) do nothing;
 
-          create table if not exists push_subscriptions (
+            create table if not exists push_subscriptions (
             id uuid primary key default gen_random_uuid(),
             user_id text not null default 'local-user',
             endpoint text not null unique,
             p256dh text not null,
             auth text not null,
-            created_at timestamptz not null default now()
+            created_at timestamptz not null default now(),
+            last_notified_at timestamptz,
+            last_slot text
           );
+          alter table push_subscriptions add column if not exists last_notified_at timestamptz;
+          alter table push_subscriptions add column if not exists last_slot text;
         `);
       } catch (err) {
         console.warn('[storage] schema ensure notice:', err.message);
@@ -161,6 +165,16 @@ export function createSupabaseStorage(databaseUrl) {
       );
       return { items: rows, page, limit, total: total.rows[0].n };
     },
+    async getLastUserMessageTime() {
+      try {
+        const { rows } = await pool.query(
+          `select created_at from messages where role = 'user' order by created_at desc limit 1`
+        );
+        return rows[0] ? new Date(rows[0].created_at).getTime() : null;
+      } catch {
+        return null;
+      }
+    },
 
     // ---- memory vectors (RAG, PRD section 8: pgvector cosine similarity) ----
     async insertMemoryVector({ conversation_id, content_chunk, embedding }) {
@@ -286,6 +300,34 @@ export function createSupabaseStorage(databaseUrl) {
     async deletePushSubscription(endpoint) {
       const { rowCount } = await pool.query('delete from push_subscriptions where endpoint = $1', [endpoint]);
       return rowCount > 0;
+    },
+    async recordPushNotification({ endpoint, slot } = {}) {
+      try {
+        if (endpoint) {
+          await pool.query(
+            'update push_subscriptions set last_notified_at = now(), last_slot = coalesce($2, last_slot) where endpoint = $1',
+            [endpoint, slot || null]
+          );
+        } else {
+          await pool.query(
+            'update push_subscriptions set last_notified_at = now(), last_slot = coalesce($1, last_slot)',
+            [slot || null]
+          );
+        }
+      } catch (err) {
+        console.warn('[storage] recordPushNotification notice:', err.message);
+      }
+    },
+    async getLastPushNotificationTime(userId) {
+      try {
+        const query = userId
+          ? 'select max(last_notified_at) as last_time from push_subscriptions where user_id = $1'
+          : 'select max(last_notified_at) as last_time from push_subscriptions';
+        const { rows } = await pool.query(query, userId ? [userId] : []);
+        return rows[0]?.last_time ? new Date(rows[0].last_time).getTime() : null;
+      } catch {
+        return null;
+      }
     },
   };
 }
