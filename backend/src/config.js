@@ -61,9 +61,9 @@ export const config = {
 
   // Web Push Notifications config
   push: {
-    vapidPublicKey: process.env.VAPID_PUBLIC_KEY || 'EXPIRED_VAPID_PUBLIC_KEY',
-    vapidPrivateKey: process.env.VAPID_PRIVATE_KEY || 'EXPIRED_VAPID_PRIVATE_KEY',
-    vapidSubject: process.env.VAPID_SUBJECT || 'mailto:dakshgoyal1812@gmail.com',
+    vapidPublicKey: (process.env.VAPID_PUBLIC_KEY || 'EXPIRED_VAPID_PUBLIC_KEY').trim(),
+    vapidPrivateKey: (process.env.VAPID_PRIVATE_KEY || 'EXPIRED_VAPID_PRIVATE_KEY').trim(),
+    vapidSubject: (process.env.VAPID_SUBJECT || 'mailto:dakshgoyal1812@gmail.com').trim(),
   },
 
   // TTS provider chain, first that succeeds wins (Edge TTS / Azure / Fish Audio / Gemini / Google).
