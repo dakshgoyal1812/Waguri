@@ -171,6 +171,19 @@ app.get('/api/push/vapid-public-key', (_req, res) => {
   res.json({ publicKey: config.push.vapidPublicKey });
 });
 
+app.get('/api/push/status', async (_req, res, next) => {
+  try {
+    const subs = await storage.listPushSubscriptions();
+    res.json({
+      configured: !!(config.push.vapidPublicKey && config.push.vapidPrivateKey),
+      publicKeyPrefix: config.push.vapidPublicKey ? config.push.vapidPublicKey.slice(0, 10) + '...' : null,
+      privateKeyLength: config.push.vapidPrivateKey ? config.push.vapidPrivateKey.length : 0,
+      subject: config.push.vapidSubject,
+      subscriptionsCount: subs.length,
+    });
+  } catch (e) { next(e); }
+});
+
 app.post('/api/push/subscribe', async (req, res, next) => {
   try {
     const { subscription, user_id } = req.body || {};
