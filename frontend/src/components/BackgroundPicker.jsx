@@ -8,6 +8,7 @@ import {
 } from '../lib/vrmStore.js';
 
 const PRESETS = [
+  { id: 'room', name: '3D Room Stage', desc: 'Cozy baked interior sitting room with warm lighting' },
   { id: 'sunset', name: 'Sunset Glow', desc: 'Warm radiant sunset & twilight gradient' },
   { id: 'paper', name: 'Textured Paper', desc: 'Light geometric woven paper pattern' },
   { id: 'wave', name: 'Colorful Wave', desc: 'Animated wave on cross grid' },
@@ -114,6 +115,23 @@ export default function BackgroundPicker({
   ];
 
   const thumbFor = (id) => {
+    if (id === 'room') {
+      return (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 45%, #7c2d12 100%)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '2px',
+        }}>
+          <span style={{ fontSize: '20px' }}>🛋️</span>
+          <span style={{ fontSize: '9px', fontWeight: 800, color: '#fef3c7', letterSpacing: '0.6px' }}>3D ROOM</span>
+        </div>
+      );
+    }
     if (id === 'sunset') {
       return (
         <div style={{
