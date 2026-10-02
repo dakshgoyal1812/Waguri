@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
+import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, UserRound, Bell, BellRing } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
@@ -14,6 +14,7 @@ import { isAdminEmail } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 import { BUNDLED_AVATARS, DEFAULT_VRM_URL, getCustomVrmBlob } from './lib/vrmStore.js';
+import { isPushSupported, getExistingSubscription, subscribeToPush, sendTestNotification } from './lib/pushClient.js';
 
 // Natural emotion cycle pool for automatic, subtle idle expression transitions
 const IDLE_EMOTION_POOL = ['relaxed', 'happy', 'neutral', 'curious', 'relaxed', 'happy'];
@@ -49,6 +50,37 @@ export default function App() {
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+
+  useEffect(() => {
+    if (isPushSupported()) {
+      getExistingSubscription().then((sub) => {
+        if (sub) setPushSubscribed(true);
+      }).catch(() => {});
+    }
+  }, []);
+
+  const handleTogglePush = async () => {
+    if (pushLoading) return;
+    setPushLoading(true);
+    try {
+      if (pushSubscribed) {
+        await sendTestNotification(authUser?.email || 'local-user');
+        alert('✨ Test notification bhej di hai! Check your phone notification bar.');
+      } else {
+        await subscribeToPush(authUser?.email || 'local-user');
+        setPushSubscribed(true);
+        await sendTestNotification(authUser?.email || 'local-user');
+        alert('🎉 Notifications enable ho gayi hain! Waguri aapko phone par sweet alerts bhejegi.');
+      }
+    } catch (err) {
+      console.error('[push] error:', err);
+      alert(err.message || 'Notification setup failed');
+    } finally {
+      setPushLoading(false);
+    }
+  };
 
   // Automatic Emotion Engine:
   // - Speech and dialogue emotions are driven automatically by LLM replies / speech playback.
@@ -514,6 +546,18 @@ export default function App() {
               <span className="install-pwa-btn-text">📱 Install App</span>
             </button>
           )}
+          <button
+            type="button"
+            className={`push-notif-btn ${pushSubscribed ? 'active' : ''}`}
+            onClick={handleTogglePush}
+            disabled={pushLoading}
+            title={pushSubscribed ? 'Notifications Active! Tap to send test alert to phone' : 'Enable girlfriend push notifications'}
+          >
+            {pushSubscribed ? <BellRing size={15} /> : <Bell size={15} />}
+            <span className="push-notif-btn-text">
+              {pushLoading ? 'Connecting...' : pushSubscribed ? 'Alerts On' : 'Enable Alerts'}
+            </span>
+          </button>
         </div>
       </header>
 

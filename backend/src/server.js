@@ -24,6 +24,7 @@ import { waguriPersona } from './personaSeed.js';
 import { createGamesModule } from './games/index.js';
 import { storeAudio } from './audioCache.js';
 import { getAudio } from './audioCache.js';
+import { createPushService } from './push/index.js';
 
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a proxy; request host must survive
@@ -46,6 +47,21 @@ if ((await storage.listAllMoods()).length === 0) {
   console.log(`[mood] seeded ${waguriMoods.length} moods`);
 }
 
+// Seed or sync the default persona so girlfriend & loyalty traits are always active
+const defaultPersona = await storage.getDefaultPersona();
+if (!defaultPersona) {
+  await storage.upsertPersona(waguriPersona);
+  console.log('[persona] seeded default Waguri persona');
+} else if (defaultPersona.name === 'Waguri' && !defaultPersona.prompt_template) {
+  await storage.upsertPersona({
+    ...defaultPersona,
+    personality_traits: waguriPersona.personality_traits,
+    speech_style: waguriPersona.speech_style,
+    backstory: waguriPersona.backstory,
+  });
+  console.log('[persona] synced Waguri persona with loyal girlfriend traits');
+}
+
 const moodEngine = createMoodEngine(storage);
 const callLLM = createLLMCaller(keyPool);
 const embedder = createEmbedder();
@@ -63,6 +79,12 @@ const games = createGamesModule({
       ? config.publicBaseUrl.replace(/\/$/, '')
       : globalThis.__waguriRequestBase?.() || ''),
   },
+});
+
+const pushService = createPushService({
+  storage,
+  callLLM,
+  getPersona: async () => await storage.getDefaultPersona(),
 });
 
 // Absolute audio URLs need the request origin when PUBLIC_BASE_URL is unset.
@@ -141,6 +163,57 @@ app.get('/api/conversations/:id/history', async (req, res, next) => {
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const history = await storage.getHistory(req.params.id, { page, limit });
     res.json({ conversation_id: req.params.id, ...history });
+  } catch (e) { next(e); }
+});
+
+// --- Web Push Notifications (PWA) ---
+app.get('/api/push/vapid-public-key', (_req, res) => {
+  res.json({ publicKey: config.push.vapidPublicKey });
+});
+
+app.post('/api/push/subscribe', async (req, res, next) => {
+  try {
+    const { subscription, user_id } = req.body || {};
+    if (!subscription || !subscription.endpoint || !subscription.keys) {
+      return res.status(400).json({ error: 'valid subscription object is required' });
+    }
+    const saved = await storage.upsertPushSubscription({
+      user_id: user_id || 'local-user',
+      endpoint: subscription.endpoint,
+      p256dh: subscription.keys.p256dh,
+      auth: subscription.keys.auth,
+    });
+    res.json({ ok: true, subscription: saved });
+  } catch (e) { next(e); }
+});
+
+app.post('/api/push/unsubscribe', async (req, res, next) => {
+  try {
+    const { endpoint } = req.body || {};
+    if (!endpoint) return res.status(400).json({ error: 'endpoint is required' });
+    const deleted = await storage.deletePushSubscription(endpoint);
+    res.json({ ok: true, deleted });
+  } catch (e) { next(e); }
+});
+
+app.post('/api/push/test', async (req, res, next) => {
+  try {
+    const { user_id, message, title } = req.body || {};
+    const result = await pushService.sendNotification({
+      userId: user_id,
+      title: title || 'Waguri ❤️',
+      body: message || 'Suno na! Push notifications perfectly work kar rahe hain ✨',
+    });
+    res.json({ ok: true, result });
+  } catch (e) { next(e); }
+});
+
+// Automated girlfriend push trigger (hits via cron-job.org / external cron / admin)
+app.all('/api/push/trigger-auto', async (req, res, next) => {
+  try {
+    const userId = req.body?.user_id || req.query?.user_id || null;
+    const result = await pushService.sendAutoGirlfriendMessage({ userId });
+    res.json({ ok: true, result });
   } catch (e) { next(e); }
 });
 

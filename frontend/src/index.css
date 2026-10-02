@@ -1231,9 +1231,11 @@ body {
   .google-user-name,
   .google-verified-icon,
   .admin-portal-btn-text,
-  .install-pwa-btn-text { display: none; }
+  .install-pwa-btn-text,
+  .push-notif-btn-text { display: none; }
   .admin-portal-topbar-btn,
-  .install-pwa-btn { padding: 8px 9px; }
+  .install-pwa-btn,
+  .push-notif-btn { padding: 8px 9px; }
   .logo {
     font-size: 1.05rem;
     gap: 8px;
@@ -1313,6 +1315,42 @@ body {
 }
 .install-pwa-btn:active {
   transform: translateY(0);
+}
+
+/* Push Notification Button */
+.push-notif-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-glass);
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.push-notif-btn.active {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.16), rgba(217, 70, 239, 0.16));
+  border-color: rgba(236, 72, 153, 0.45);
+  color: #ec4899;
+}
+.push-notif-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.25);
+}
+.push-notif-btn:active {
+  transform: translateY(0);
+}
+.push-notif-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ============ Google Auth Button & Profile ============ */

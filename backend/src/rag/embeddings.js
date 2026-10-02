@@ -40,7 +40,7 @@ export function createEmbedder() {
 // sharing words -> high cosine similarity. Good enough to prove retrieval wiring.
 export function hashEmbed(text, dim = 384) {
   const vec = new Float64Array(dim);
-  const words = String(text).toLowerCase().match(/[a-z0-9']{3,}/g) || [];
+  const words = String(text).toLowerCase().match(/[a-z0-9']{2,}/g) || [];
   for (const w of words) {
     let h = 2166136261;
     for (let i = 0; i < w.length; i++) { h ^= w.charCodeAt(i); h = Math.imul(h, 16777619); }

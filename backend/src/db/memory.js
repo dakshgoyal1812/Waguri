@@ -16,6 +16,7 @@ export function createMemoryStorage() {
       ['dakshgoyal1812@gmail.com', { email: 'dakshgoyal1812@gmail.com', added_by: 'system', created_at: new Date().toISOString() }],
       ['goyaldaksh284@gmail.com', { email: 'goyaldaksh284@gmail.com', added_by: 'system', created_at: new Date().toISOString() }],
     ]),
+    pushSubscriptions: new Map(), // endpoint -> { id, user_id, endpoint, p256dh, auth, created_at }
   };
   let seq = 0;
   const id = () => `id-${++seq}-${Math.random().toString(36).slice(2, 10)}`;
@@ -108,14 +109,18 @@ export function createMemoryStorage() {
       return { id: row.id };
     },
     async searchMemory({ conversation_id, embedding, k }) {
-      const rows = db.memoryVectors.get(conversation_id) || [];
+      // In companion mode, retrieve relevant memories across all past exchanges/sessions
+      const allRows = [];
+      for (const list of db.memoryVectors.values()) {
+        allRows.push(...list);
+      }
       const cos = (a, b) => {
         let dot = 0, na = 0, nb = 0;
         const n = Math.min(a.length, b.length);
         for (let i = 0; i < n; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
         return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
       };
-      return rows
+      return allRows
         .map((r) => ({ content_chunk: r.content_chunk, created_at: r.created_at, similarity: cos(embedding, r.embedding) }))
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, k);
@@ -177,6 +182,24 @@ export function createMemoryStorage() {
       const clean = email.trim().toLowerCase();
       db.allowedUsers.delete(clean);
       return [...db.allowedUsers.values()].map(clone);
+    },
+
+    // ---- push_subscriptions (Web Push) ----
+    async upsertPushSubscription({ user_id = 'local-user', endpoint, p256dh, auth }) {
+      if (!endpoint || !p256dh || !auth) throw new Error('endpoint, p256dh, auth are required');
+      const existing = db.pushSubscriptions.get(endpoint);
+      const row = existing
+        ? { ...existing, user_id, p256dh, auth }
+        : { id: id(), user_id, endpoint, p256dh, auth, created_at: now().toISOString() };
+      db.pushSubscriptions.set(endpoint, row);
+      return clone(row);
+    },
+    async listPushSubscriptions(userId) {
+      const all = [...db.pushSubscriptions.values()];
+      return (userId ? all.filter((s) => s.user_id === userId) : all).map(clone);
+    },
+    async deletePushSubscription(endpoint) {
+      return db.pushSubscriptions.delete(endpoint);
     },
 
     // test hook

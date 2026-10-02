@@ -51,12 +51,19 @@ export const config = {
     dim: int(process.env.EMBEDDINGS_DIM, 1024),
   },
 
-  // RAG pipeline parameters (PRD section 8: top 5-8 chunks; last N raw messages).
+  // RAG pipeline parameters (PRD section 8: top 5-12 chunks; last N raw messages).
   rag: {
-    topK: int(process.env.RAG_TOP_K, 6),
-    recentMessages: int(process.env.RAG_RECENT_MESSAGES, 10),
+    topK: int(process.env.RAG_TOP_K, 8),
+    recentMessages: int(process.env.RAG_RECENT_MESSAGES, 12),
     chunkSize: int(process.env.RAG_CHUNK_SIZE, 500),
-    chunkOverlap: int(process.env.RAG_CHUNK_OVERLAP, 50),
+    chunkOverlap: int(process.env.RAG_CHUNK_OVERLAP, 60),
+  },
+
+  // Web Push Notifications config
+  push: {
+    vapidPublicKey: process.env.VAPID_PUBLIC_KEY || 'BK_Ko-huYBFhDJdeAfKiWAL6y5ByzkMG5NLJljpNNbHP3YktTGeor2KllfEJ__-Gog9hTwTz9LemAM3_LHZI09g',
+    vapidPrivateKey: process.env.VAPID_PRIVATE_KEY || 'FjzdnxU4p1t91xtDwXK-GObaVhFFpDuPDpE0jrUllLg',
+    vapidSubject: process.env.VAPID_SUBJECT || 'mailto:dakshgoyal1812@gmail.com',
   },
 
   // TTS provider chain, first that succeeds wins (Edge TTS / Azure / Fish Audio / Gemini / Google).
