@@ -1,12 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { X, ImagePlus, UserRound, Upload, Trash2, Check, Volume2, Loader2 } from 'lucide-react';
-import {
-  BUNDLED_AVATARS,
-  listCustomVrms,
-  saveCustomVrm,
-  deleteCustomVrm,
-} from '../lib/vrmStore.js';
-import { synthesizeToUrl } from '../api.js';
+import { X, ImagePlus, Check, Image as ImageIcon } from 'lucide-react';
 
 const PRESETS = [
   { id: 'room', name: 'Cozy Room', desc: 'Anime wallpaper on phone / 3D room on laptop' },
@@ -17,84 +10,31 @@ const PRESETS = [
   { id: 'transparent', name: 'Transparent', desc: 'Reveal the plain stage backdrop' },
 ];
 
-const THUMB_GRADIENTS = [
-  'linear-gradient(135deg, #a78bfa, #f472b6)',
-  'linear-gradient(135deg, #22b8cf, #8b5cf6)',
-  'linear-gradient(135deg, #fb923c, #f472b6)',
-  'linear-gradient(135deg, #34d399, #22b8cf)',
-];
-
-const formatSize = (bytes) => {
-  if (!Number.isFinite(bytes)) return '';
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${Math.round(bytes / 1024)} KB`;
-};
-
 export default function BackgroundPicker({
   isOpen,
   onClose,
   background,
   onApply,
-  activeVrmId = 'waguri',
-  onSelectVrm = () => {},
-  initialTab = 'background',
 }) {
-  const [activeTab, setActiveTab] = useState(initialTab); // 'background' | 'avatar'
-  const [draftId, setDraftId] = useState(background?.id || 'wave');
+  const [draftId, setDraftId] = useState(background?.id || 'room');
   const [draftCustom, setDraftCustom] = useState(background?.custom || '');
-  const [customVrms, setCustomVrms] = useState([]);
-  const [addingVrm, setAddingVrm] = useState(false);
   const fileRef = useRef(null);
-  const vrmFileRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) return;
-    setActiveTab(initialTab);
-    setDraftId(background?.id || 'wave');
+    setDraftId(background?.id || 'room');
     setDraftCustom(background?.custom || '');
-    listCustomVrms().then(setCustomVrms).catch(() => setCustomVrms([]));
-  }, [isOpen, background, initialTab]);
+  }, [isOpen, background]);
 
-  const [playingVoiceId, setPlayingVoiceId] = useState(null);
-  const audioPreviewRef = useRef(null);
-
+  // Escape key handler
   useEffect(() => {
-    return () => {
-      if (audioPreviewRef.current) {
-        audioPreviewRef.current.pause();
-        audioPreviewRef.current = null;
-      }
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
     };
-  }, []);
-
-  const handlePreviewVoice = async (e, a) => {
-    e.stopPropagation();
-    if (audioPreviewRef.current) {
-      audioPreviewRef.current.pause();
-      audioPreviewRef.current = null;
-    }
-    if (playingVoiceId === a.id) {
-      setPlayingVoiceId(null);
-      return;
-    }
-    setPlayingVoiceId(a.id);
-    try {
-      const text = a.voiceGreeting || `Konnichiwa! Main ${a.name} hoon!`;
-      const res = await synthesizeToUrl(text, 'happy', a.id);
-      if (res?.audio_url) {
-        const audio = new Audio(res.audio_url);
-        audioPreviewRef.current = audio;
-        audio.onended = () => setPlayingVoiceId(null);
-        audio.onerror = () => setPlayingVoiceId(null);
-        await audio.play();
-      } else {
-        setPlayingVoiceId(null);
-      }
-    } catch (err) {
-      console.warn('Voice preview error:', err);
-      setPlayingVoiceId(null);
-    }
-  };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -109,16 +49,11 @@ export default function BackgroundPicker({
     onClose();
   };
 
-  const handleSelectAvatar = (id) => {
-    onSelectVrm(id);
-    onClose();
-  };
-
   const onFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 4 * 1024 * 1024) {
-      alert('Custom background image is larger than 4 MB — pick a smaller one.');
+      alert('Custom background image is larger than 4 MB — please pick a smaller one.');
       return;
     }
     const reader = new FileReader();
@@ -130,48 +65,6 @@ export default function BackgroundPicker({
     };
     reader.readAsDataURL(file);
   };
-
-  const onVrmFile = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    if (!/\.vrm$/i.test(file.name)) {
-      alert('Please pick a .vrm file (VRM 0.x or 1.0 models both work).');
-      return;
-    }
-    if (file.size > 150 * 1024 * 1024) {
-      alert('That VRM is larger than 150 MB — please use a smaller file.');
-      return;
-    }
-    setAddingVrm(true);
-    try {
-      const meta = await saveCustomVrm(file);
-      setCustomVrms((c) => [...c, meta]);
-      onSelectVrm(meta.id);
-      onClose();
-    } catch (err) {
-      console.error('[waguri] VRM save failed:', err);
-      alert(`Could not save that VRM: ${err.message}`);
-    } finally {
-      setAddingVrm(false);
-    }
-  };
-
-  const removeCustom = async (id) => {
-    if (!window.confirm('Remove this avatar from your saved avatars?')) return;
-    try {
-      await deleteCustomVrm(id);
-      setCustomVrms((c) => c.filter((a) => a.id !== id));
-      if (id === activeVrmId) onSelectVrm('waguri');
-    } catch (err) {
-      alert(`Could not remove that avatar: ${err.message}`);
-    }
-  };
-
-  const avatarEntries = [
-    ...BUNDLED_AVATARS.map((a) => ({ ...a, bundled: true })),
-    ...customVrms.map((c) => ({ ...c, bundled: false })),
-  ];
 
   const thumbFor = (id) => {
     if (id === 'room') {
@@ -235,223 +128,132 @@ export default function BackgroundPicker({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="bg-picker-modal" onClick={(e) => e.stopPropagation()}>
-        {/* Header with Switcher Tabs */}
-        <div className="modal-header">
-          <div className="bg-avatar-tabs">
-            <button
-              type="button"
-              className={`bg-avatar-tab ${activeTab === 'background' ? 'active' : ''}`}
-              onClick={() => setActiveTab('background')}
-            >
-              🖼️ Background
-            </button>
-            <button
-              type="button"
-              className={`bg-avatar-tab ${activeTab === 'avatar' ? 'active' : ''}`}
-              onClick={() => setActiveTab('avatar')}
-            >
-              👤 Avatar
-            </button>
+        {/* Header */}
+        <div className="modal-header" style={{ padding: '16px 20px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ImageIcon size={20} style={{ color: '#3b82f6' }} />
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>Stage Wallpaper</h3>
           </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Close modal"><X size={18} /></button>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+            <X size={18} />
+          </button>
         </div>
 
-        {/* Background Tab Content (Image 2 style) */}
-        {activeTab === 'background' && (
-          <>
-            <div className="bg-picker-body">
-              <div className="bg-options">
-                {PRESETS.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className={`bg-option ${draftId === p.id ? 'selected' : ''}`}
-                    onClick={() => handleSelectBackground(p.id)}
-                  >
-                    <div className="bg-thumb">{thumbFor(p.id)}</div>
-                    <span className="bg-name">{p.name}</span>
-                    <span className="bg-desc">{p.desc}</span>
-                  </button>
-                ))}
-                {draftCustom && (
-                  <button
-                    key="custom"
-                    type="button"
-                    className={`bg-option ${draftId === 'custom' ? 'selected' : ''}`}
-                    onClick={() => handleSelectBackground('custom', draftCustom)}
-                  >
-                    <div className="bg-thumb">{thumbFor('custom')}</div>
-                    <span className="bg-name">Custom image</span>
-                    <span className="bg-desc">Your uploaded background</span>
-                  </button>
-                )}
-              </div>
+        <div className="bg-picker-body">
+          <p style={{ margin: '0 0 4px', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+            Choose an anime room, radiant gradient or custom photo for Waguri's backdrop.
+          </p>
 
+          <div className="bg-options">
+            {PRESETS.map((p) => (
               <button
+                key={p.id}
                 type="button"
-                className="quick-pill"
-                style={{ alignSelf: 'flex-start', touchAction: 'manipulation' }}
-                onClick={() => fileRef.current?.click()}
+                className={`bg-option ${draftId === p.id ? 'selected' : ''}`}
+                onClick={() => handleSelectBackground(p.id)}
               >
-                <ImagePlus size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
-                Add custom background
-              </button>
-              <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
-
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginTop: 4 }}>Preview</div>
-              <div style={{ height: 110, borderRadius: 12, overflow: 'hidden', position: 'relative', border: '1px solid var(--border-glass)', flexShrink: 0 }}>
-                {draftId === 'room' && (
-                  <div style={{
-                    position: 'absolute',
-                    inset: 0,
-                    backgroundImage: "url('/room-phone.jpg')",
-                    backgroundPosition: 'center 45%',
-                    backgroundSize: 'cover',
-                  }}>
-                    <div style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.6) 100%)',
-                      display: 'flex',
-                      alignItems: 'flex-end',
-                      padding: '8px 12px',
-                    }}>
-                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#fef3c7', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
-                        Cozy Room (Anime Wallpaper on Phone, 3D Room on Laptop)
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {draftId === 'sunset' && (
-                  <div style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: 'radial-gradient(125% 125% at -2% 101%, rgba(245, 87, 2, 1) 10.5%, rgba(245, 120, 2, 1) 16%, rgba(245, 140, 2, 1) 17.5%, rgba(245, 170, 100, 1) 25%, rgba(238, 174, 202, 1) 40%, rgba(202, 179, 214, 1) 70%, rgba(202, 179, 214, 1) 100%)',
-                  }} />
-                )}
-                {draftId === 'paper' && (
-                  <div style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: 'radial-gradient(circle, #777 1.5px, transparent 1.5px), linear-gradient(45deg, #f5f5f5 0%, #e5e5e5 50%, #f5f5f5 100%)',
-                    backgroundSize: '24px 24px',
-                  }} />
-                )}
-                {draftId === 'wave' && <div className="cross-grid" style={{ position: 'absolute', inset: 0 }} />}
-                {draftId === 'midnight' && (
-                  <div style={{ position: 'absolute', inset: 0, background: '#050505', overflow: 'hidden' }}>
-                    <div style={{ position: 'absolute', top: '15%', left: '15%', width: 28, height: 28, borderRadius: '50%', boxShadow: '6px 6px 0 0 #fdfbd3' }} />
-                    <div style={{ position: 'absolute', top: '25%', left: '45%', width: 3, height: 3, background: '#fff', borderRadius: '50%', boxShadow: '0 0 5px #fff' }} />
-                    <div style={{ position: 'absolute', top: '60%', left: '65%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
-                    <div style={{ position: 'absolute', top: '40%', left: '80%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
-                  </div>
-                )}
-                {draftId === 'custom' && draftCustom && <div style={{ position: 'absolute', inset: 0, background: `url(${draftCustom}) center/cover` }} />}
-                {(draftId === 'transparent') && <div className="checker" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: '0.74rem', color: 'var(--text-muted)' }}>Transparent</div>}
-              </div>
-            </div>
-
-            <div className="bg-picker-footer">
-              <button
-                type="button"
-                className="btn-primary"
-                style={{ padding: '9px 18px', touchAction: 'manipulation' }}
-                onClick={() => { onApply({ id: draftId, custom: draftId === 'custom' ? draftCustom : '' }); onClose(); }}
-              >
-                Use this background
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* Avatar Tab Content */}
-        {activeTab === 'avatar' && (
-          <div className="bg-picker-body">
-            <p style={{ margin: '0 0 6px', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-              Choose your 3D avatar companion or upload a custom .VRM model.
-            </p>
-
-            <div className="bg-options">
-              {avatarEntries.map((a, i) => (
-                <div
-                  key={a.id}
-                  className={`bg-option vrm-option ${activeVrmId === a.id ? 'selected' : ''}`}
-                  onClick={() => handleSelectAvatar(a.id)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  {activeVrmId === a.id && (
-                    <span className="vrm-active-badge">
-                      <Check size={10} strokeWidth={3} /> Selected
-                    </span>
-                  )}
-                  {!a.bundled && (
-                    <button
-                      type="button"
-                      className="vrm-delete"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeCustom(a.id);
-                      }}
-                      title="Delete this custom avatar"
-                      aria-label="Delete avatar"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                  <div className="vrm-thumb">
-                    {a.thumb ? (
-                      <img src={a.thumb} alt={a.name} className="vrm-thumb-img" />
-                    ) : (
-                      <div
-                        className="vrm-thumb-placeholder"
-                        style={{ background: THUMB_GRADIENTS[i % THUMB_GRADIENTS.length] }}
-                      >
-                        <UserRound size={32} />
-                      </div>
-                    )}
-                  </div>
-                  <span className="bg-name">{a.name}</span>
-                  <span className="bg-desc">{a.desc || formatSize(a.size)}</span>
-                  {a.voiceLabel && (
-                    <span className="vrm-voice-tag" title="Character voice pitch & tone">
-                      🎵 {a.voiceLabel}
-                    </span>
-                  )}
-                  {a.bundled && (
-                    <button
-                      type="button"
-                      className={`vrm-preview-btn ${playingVoiceId === a.id ? 'playing' : ''}`}
-                      onClick={(e) => handlePreviewVoice(e, a)}
-                      title={`Listen to ${a.name}'s voice tone`}
-                    >
-                      {playingVoiceId === a.id ? (
-                        <>
-                          <Loader2 size={12} className="spin" /> Playing voice...
-                        </>
-                      ) : (
-                        <>
-                          <Volume2 size={12} /> Preview voice
-                        </>
-                      )}
-                    </button>
-                  )}
+                <div className="bg-thumb">{thumbFor(p.id)}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <span className="bg-name">{p.name}</span>
+                  {draftId === p.id && <Check size={13} style={{ color: 'var(--accent-purple)' }} />}
                 </div>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              className="quick-pill"
-              style={{ alignSelf: 'flex-start', touchAction: 'manipulation' }}
-              disabled={addingVrm}
-              onClick={() => vrmFileRef.current?.click()}
-            >
-              <Upload size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
-              {addingVrm ? 'Saving avatar…' : 'Add custom VRM avatar (.vrm)'}
-            </button>
-            <input ref={vrmFileRef} type="file" accept=".vrm" hidden onChange={onVrmFile} />
+                <span className="bg-desc">{p.desc}</span>
+              </button>
+            ))}
+            {draftCustom && (
+              <button
+                key="custom"
+                type="button"
+                className={`bg-option ${draftId === 'custom' ? 'selected' : ''}`}
+                onClick={() => handleSelectBackground('custom', draftCustom)}
+              >
+                <div className="bg-thumb">{thumbFor('custom')}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <span className="bg-name">Custom image</span>
+                  {draftId === 'custom' && <Check size={13} style={{ color: 'var(--accent-purple)' }} />}
+                </div>
+                <span className="bg-desc">Your uploaded photo</span>
+              </button>
+            )}
           </div>
-        )}
+
+          <button
+            type="button"
+            className="quick-pill"
+            style={{ alignSelf: 'flex-start', touchAction: 'manipulation' }}
+            onClick={() => fileRef.current?.click()}
+          >
+            <ImagePlus size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+            Add custom background photo
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
+
+          <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginTop: 4 }}>Preview</div>
+          <div style={{ height: 110, borderRadius: 12, overflow: 'hidden', position: 'relative', border: '1px solid var(--border-glass)', flexShrink: 0 }}>
+            {draftId === 'room' && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundImage: "url('/room-phone.jpg')",
+                backgroundPosition: 'center 45%',
+                backgroundSize: 'cover',
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.6) 100%)',
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  padding: '8px 12px',
+                }}>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#fef3c7', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+                    Cozy Room (Anime Wallpaper on Phone, 3D Room on Laptop)
+                  </span>
+                </div>
+              </div>
+            )}
+            {draftId === 'sunset' && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'radial-gradient(125% 125% at -2% 101%, rgba(245, 87, 2, 1) 10.5%, rgba(245, 120, 2, 1) 16%, rgba(245, 140, 2, 1) 17.5%, rgba(245, 170, 100, 1) 25%, rgba(238, 174, 202, 1) 40%, rgba(202, 179, 214, 1) 70%, rgba(202, 179, 214, 1) 100%)',
+              }} />
+            )}
+            {draftId === 'paper' && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'radial-gradient(circle, #777 1.5px, transparent 1.5px), linear-gradient(45deg, #f5f5f5 0%, #e5e5e5 50%, #f5f5f5 100%)',
+                backgroundSize: '24px 24px',
+              }} />
+            )}
+            {draftId === 'wave' && <div className="cross-grid" style={{ position: 'absolute', inset: 0 }} />}
+            {draftId === 'midnight' && (
+              <div style={{ position: 'absolute', inset: 0, background: '#050505', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: '15%', left: '15%', width: 28, height: 28, borderRadius: '50%', boxShadow: '6px 6px 0 0 #fdfbd3' }} />
+                <div style={{ position: 'absolute', top: '25%', left: '45%', width: 3, height: 3, background: '#fff', borderRadius: '50%', boxShadow: '0 0 5px #fff' }} />
+                <div style={{ position: 'absolute', top: '60%', left: '65%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
+                <div style={{ position: 'absolute', top: '40%', left: '80%', width: 2, height: 2, background: '#fff', borderRadius: '50%', boxShadow: '0 0 4px #fff' }} />
+              </div>
+            )}
+            {draftId === 'custom' && draftCustom && <div style={{ position: 'absolute', inset: 0, background: `url(${draftCustom}) center/cover` }} />}
+            {(draftId === 'transparent') && <div className="checker" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: '0.74rem', color: 'var(--text-muted)' }}>Transparent</div>}
+          </div>
+        </div>
+
+        <div className="bg-picker-footer">
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ padding: '9px 18px', touchAction: 'manipulation' }}
+            onClick={() => {
+              onApply({ id: draftId, custom: draftId === 'custom' ? draftCustom : '' });
+              onClose();
+            }}
+          >
+            Apply wallpaper
+          </button>
+        </div>
       </div>
     </div>
   );

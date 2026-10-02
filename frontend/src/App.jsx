@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing, Clock } from 'lucide-react';
+import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing, Clock, UserRound } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
@@ -127,8 +127,8 @@ export default function App() {
   }, [isSpeaking, isLoading]);
 
   // Modals
-  const [isBgPickerOpen, setIsBgPickerOpen] = useState(false);
-  const [bgPickerTab, setBgPickerTab] = useState('background');
+  const [isWallpaperPickerOpen, setIsWallpaperPickerOpen] = useState(false);
+  const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
   const [isAlarmModalOpen, setIsAlarmModalOpen] = useState(false);
 
@@ -891,16 +891,19 @@ export default function App() {
           {/* 1. Chat Panel */}
           <button
             className={`social-fab__button chat ${chatOpen ? 'active' : ''}`}
+            style={{ '--index': 0 }}
             onClick={() => handleFabAction(() => setChatOpen((o) => !o))}
             title={chatOpen ? 'Hide chat' : 'Show chat'}
             aria-label="Toggle chat panel"
           >
             <MessageCircle size={19} />
+            <span className="social-fab__tooltip">Chat</span>
           </button>
 
           {/* 2. Hands-Free Mic */}
           <button
             className={`social-fab__button mic ${handsFree ? 'mic-active' : ''} ${voice.isSpeaking ? 'speaking' : ''}`}
+            style={{ '--index': 1 }}
             onClick={() => handleFabAction(toggleMic)}
             title={
               voice.voiceError
@@ -914,41 +917,61 @@ export default function App() {
             aria-label="Toggle hands-free voice"
           >
             {handsFree ? <Mic size={19} /> : <MicOff size={19} />}
+            <span className="social-fab__tooltip">Mic</span>
           </button>
 
-          {/* 3. Alarms & Voice Reminders */}
-          <button
-            className="social-fab__button alarm"
-            onClick={() => handleFabAction(() => setIsAlarmModalOpen(true))}
-            title="Alarms & Voice Reminders"
-            aria-label="Alarms & Voice Reminders"
-          >
-            <Clock size={19} />
-          </button>
-
-          {/* 4. Voice Audio Auto-play */}
+          {/* 3. Voice Audio Auto-play */}
           <button
             className={`social-fab__button voice ${autoPlayAudio ? 'active' : ''}`}
+            style={{ '--index': 2 }}
             onClick={() => handleFabAction(() => setAutoPlayAudio(!autoPlayAudio))}
             title={autoPlayAudio ? 'Her voice ON' : 'Her voice MUTED'}
             aria-label="Toggle voice auto-play"
           >
             {autoPlayAudio ? <Volume2 size={19} /> : <VolumeX size={19} />}
+            <span className="social-fab__tooltip">Voice</span>
           </button>
 
-          {/* 5. Stage Background & Avatar */}
+          {/* 4. 3D Avatar Companion */}
           <button
-            className="social-fab__button bg"
-            onClick={() => handleFabAction(() => setIsBgPickerOpen(true))}
-            title="Stage background & Avatar"
-            aria-label="Stage background & Avatar"
+            className={`social-fab__button avatar ${isAvatarPickerOpen ? 'active' : ''}`}
+            style={{ '--index': 3 }}
+            onClick={() => handleFabAction(() => setIsAvatarPickerOpen(true))}
+            title="3D Avatar Companion (Change model & voice)"
+            aria-label="Change 3D Avatar Companion"
+          >
+            <UserRound size={19} />
+            <span className="social-fab__tooltip">Avatar</span>
+          </button>
+
+          {/* 5. Stage Wallpaper */}
+          <button
+            className={`social-fab__button wallpaper ${isWallpaperPickerOpen ? 'active' : ''}`}
+            style={{ '--index': 4 }}
+            onClick={() => handleFabAction(() => setIsWallpaperPickerOpen(true))}
+            title="Stage Wallpaper (Change background)"
+            aria-label="Change Stage Wallpaper"
           >
             <ImageIcon size={19} />
+            <span className="social-fab__tooltip">Wallpaper</span>
           </button>
 
-          {/* 6. Girlfriend Notifications (Added from Topbar) */}
+          {/* 6. Alarms & Voice Reminders */}
+          <button
+            className={`social-fab__button alarm ${isAlarmModalOpen ? 'active' : ''}`}
+            style={{ '--index': 5 }}
+            onClick={() => handleFabAction(() => setIsAlarmModalOpen(true))}
+            title="Alarms & Voice Reminders"
+            aria-label="Alarms & Voice Reminders"
+          >
+            <Clock size={19} />
+            <span className="social-fab__tooltip">Alarms</span>
+          </button>
+
+          {/* 7. Girlfriend Notifications */}
           <button
             className={`social-fab__button notif ${pushSubscribed ? 'active' : ''}`}
+            style={{ '--index': 6 }}
             onClick={() => handleFabAction(handleTogglePush)}
             disabled={pushLoading}
             title={
@@ -961,17 +984,22 @@ export default function App() {
             aria-label="Phone Notifications"
           >
             {pushSubscribed ? <BellRing size={19} /> : <Bell size={19} />}
+            <span className="social-fab__tooltip">Alerts</span>
           </button>
 
-          {/* 7. Admin Access Portal (Added from Topbar) */}
-          <button
-            className="social-fab__button admin"
-            onClick={() => handleFabAction(() => setIsAdminPortalOpen(true))}
-            title="Admin Portal (Whitelist & Users)"
-            aria-label="Admin Access Portal"
-          >
-            <ShieldCheck size={19} />
-          </button>
+          {/* 8. Admin Access Portal (only visible to authorized admin accounts) */}
+          {isAdminEmail(authUser?.email) && (
+            <button
+              className={`social-fab__button admin ${isAdminPortalOpen ? 'active' : ''}`}
+              style={{ '--index': 7 }}
+              onClick={() => handleFabAction(() => setIsAdminPortalOpen(true))}
+              title="Admin Portal (Whitelist & Users)"
+              aria-label="Admin Access Portal"
+            >
+              <ShieldCheck size={19} />
+              <span className="social-fab__tooltip">Admin</span>
+            </button>
+          )}
         </div>
         <button
           type="button"
@@ -987,13 +1015,17 @@ export default function App() {
 
       {/* Modals */}
       <BackgroundPicker
-        isOpen={isBgPickerOpen}
-        onClose={() => setIsBgPickerOpen(false)}
+        isOpen={isWallpaperPickerOpen}
+        onClose={() => setIsWallpaperPickerOpen(false)}
         background={background}
         onApply={setBackground}
-        activeVrmId={activeVrmId}
-        onSelectVrm={(id) => setActiveVrmId(id)}
-        initialTab={bgPickerTab}
+      />
+
+      <VRMPicker
+        isOpen={isAvatarPickerOpen}
+        onClose={() => setIsAvatarPickerOpen(false)}
+        activeId={activeVrmId}
+        onSelect={(id) => setActiveVrmId(id)}
       />
 
       <AdminPortal

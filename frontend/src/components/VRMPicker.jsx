@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Upload, Trash2, Check, UserRound } from 'lucide-react';
+import { X, Upload, Trash2, Check, UserRound, Volume2, Loader2 } from 'lucide-react';
 import {
   BUNDLED_AVATARS,
   listCustomVrms,
   saveCustomVrm,
   deleteCustomVrm,
 } from '../lib/vrmStore.js';
+import { synthesizeToUrl } from '../api.js';
 
 const THUMB_GRADIENTS = [
   'linear-gradient(135deg, #a78bfa, #f472b6)',
@@ -20,24 +21,83 @@ const formatSize = (bytes) => {
   return `${Math.round(bytes / 1024)} KB`;
 };
 
-// Avatar picker: bundled models + user-added .vrm files (stored in IndexedDB).
-// Selecting one swaps the 3D stage onto it — talking, emotions, gaze and all
-// other capabilities carry over because the animation rig is model-agnostic.
-export default function VRMPicker({ isOpen, onClose, activeId, onSelect }) {
+// Dedicated Avatar companion picker: bundled 3D models + user custom .vrm files.
+// Every avatar talks, emotes, blinks and tracks the cursor seamlessly.
+export default function VRMPicker({
+  isOpen,
+  onClose,
+  activeId,
+  activeVrmId,
+  onSelect,
+  onSelectVrm,
+}) {
+  const currentActiveId = activeId || activeVrmId || 'waguri';
+  const handleSelect = onSelect || onSelectVrm || (() => {});
+
   const [customs, setCustoms] = useState([]);
   const [adding, setAdding] = useState(false);
+  const [playingVoiceId, setPlayingVoiceId] = useState(null);
   const fileRef = useRef(null);
+  const audioPreviewRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) return;
     listCustomVrms().then(setCustoms).catch(() => setCustoms([]));
   }, [isOpen]);
 
+  useEffect(() => {
+    return () => {
+      if (audioPreviewRef.current) {
+        audioPreviewRef.current.pause();
+        audioPreviewRef.current = null;
+      }
+    };
+  }, []);
+
+  // Escape key handler
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
+
+  const handlePreviewVoice = async (e, a) => {
+    e.stopPropagation();
+    if (audioPreviewRef.current) {
+      audioPreviewRef.current.pause();
+      audioPreviewRef.current = null;
+    }
+    if (playingVoiceId === a.id) {
+      setPlayingVoiceId(null);
+      return;
+    }
+    setPlayingVoiceId(a.id);
+    try {
+      const text = a.voiceGreeting || `Konnichiwa! Main ${a.name} hoon!`;
+      const res = await synthesizeToUrl(text, 'happy', a.id);
+      if (res?.audio_url) {
+        const audio = new Audio(res.audio_url);
+        audioPreviewRef.current = audio;
+        audio.onended = () => setPlayingVoiceId(null);
+        audio.onerror = () => setPlayingVoiceId(null);
+        await audio.play();
+      } else {
+        setPlayingVoiceId(null);
+      }
+    } catch (err) {
+      console.warn('Voice preview error:', err);
+      setPlayingVoiceId(null);
+    }
+  };
 
   const onFile = async (e) => {
     const file = e.target.files?.[0];
-    e.target.value = ''; // allow re-picking the same file after a fix-up
+    e.target.value = '';
     if (!file) return;
     if (!/\.vrm$/i.test(file.name)) {
       alert('Please pick a .vrm file (VRM 0.x or 1.0 models both work).');
@@ -51,7 +111,8 @@ export default function VRMPicker({ isOpen, onClose, activeId, onSelect }) {
     try {
       const meta = await saveCustomVrm(file);
       setCustoms((c) => [...c, meta]);
-      onSelect(meta.id); // wear the new avatar right away
+      handleSelect(meta.id); // wear new avatar right away
+      onClose();
     } catch (err) {
       console.error('[waguri] VRM save failed:', err);
       alert(`Could not save that VRM: ${err.message}`);
@@ -65,7 +126,7 @@ export default function VRMPicker({ isOpen, onClose, activeId, onSelect }) {
     try {
       await deleteCustomVrm(id);
       setCustoms((c) => c.filter((a) => a.id !== id));
-      if (id === activeId) onSelect('waguri'); // deleted the worn one → back to default
+      if (id === currentActiveId) handleSelect('waguri');
     } catch (err) {
       alert(`Could not remove that avatar: ${err.message}`);
     }
@@ -79,29 +140,38 @@ export default function VRMPicker({ isOpen, onClose, activeId, onSelect }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="bg-picker-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+        <div className="modal-header" style={{ padding: '16px 20px 0' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <UserRound size={20} style={{ color: '#8b5cf6' }} />
-            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>Avatar</h3>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>3D Avatar Companion</h3>
           </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Close modal"><X size={18} /></button>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+            <X size={18} />
+          </button>
         </div>
 
         <div className="bg-picker-body">
-          <p style={{ margin: '0 0 4px', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-            Every avatar talks, emotes, blinks and follows your cursor exactly like Waguri —
-            pick one below or add your own .vrm file.
+          <p style={{ margin: '0 0 6px', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+            Choose your 3D avatar companion or upload a custom .VRM model. Each avatar speaks with their own unique voice and emotes naturally.
           </p>
 
           <div className="bg-options">
             {entries.map((a, i) => (
               <div
                 key={a.id}
-                className={`bg-option vrm-option ${activeId === a.id ? 'selected' : ''}`}
+                className={`bg-option vrm-option ${currentActiveId === a.id ? 'selected' : ''}`}
                 role="button"
                 tabIndex={0}
-                onClick={() => onSelect(a.id)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(a.id); }}
+                onClick={() => {
+                  handleSelect(a.id);
+                  onClose();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    handleSelect(a.id);
+                    onClose();
+                  }
+                }}
               >
                 <div
                   className="bg-thumb vrm-thumb"
@@ -126,18 +196,51 @@ export default function VRMPicker({ isOpen, onClose, activeId, onSelect }) {
                     </div>
                   )}
                 </div>
+
                 <span className="bg-name">{a.name}</span>
                 <span className="bg-desc">{a.bundled ? a.desc : formatSize(a.size)}</span>
-                {activeId === a.id && (
-                  <span className="vrm-active-badge"><Check size={11} /> Worn</span>
+
+                {currentActiveId === a.id && (
+                  <span className="vrm-active-badge">
+                    <Check size={11} strokeWidth={3} /> Selected
+                  </span>
                 )}
+
+                {a.voiceLabel && (
+                  <span className="vrm-voice-tag" title="Character voice pitch & tone">
+                    🎵 {a.voiceLabel}
+                  </span>
+                )}
+
+                {a.bundled && (
+                  <button
+                    type="button"
+                    className={`vrm-preview-btn ${playingVoiceId === a.id ? 'playing' : ''}`}
+                    onClick={(e) => handlePreviewVoice(e, a)}
+                    title={`Listen to ${a.name}'s voice tone`}
+                  >
+                    {playingVoiceId === a.id ? (
+                      <>
+                        <Loader2 size={12} className="spin" /> Playing voice...
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 size={12} /> Preview voice
+                      </>
+                    )}
+                  </button>
+                )}
+
                 {!a.bundled && (
                   <button
                     type="button"
                     className="vrm-delete"
                     title="Remove this avatar"
                     aria-label={`Remove ${a.name}`}
-                    onClick={(e) => { e.stopPropagation(); removeCustom(a.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeCustom(a.id);
+                    }}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -154,7 +257,7 @@ export default function VRMPicker({ isOpen, onClose, activeId, onSelect }) {
             onClick={() => fileRef.current?.click()}
           >
             <Upload size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
-            {adding ? 'Adding avatar…' : 'Add your own VRM'}
+            {adding ? 'Saving avatar…' : 'Add custom VRM avatar (.vrm)'}
           </button>
           <input ref={fileRef} type="file" accept=".vrm" hidden onChange={onFile} />
         </div>
