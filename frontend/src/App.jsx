@@ -14,7 +14,7 @@ import { isAdminEmail } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 import { BUNDLED_AVATARS, DEFAULT_VRM_URL, getCustomVrmBlob } from './lib/vrmStore.js';
-import { isPushSupported, getExistingSubscription, subscribeToPush, sendTestNotification } from './lib/pushClient.js';
+import { isPushSupported, getExistingSubscription, subscribeToPush, sendTestNotification, showLocalNotification } from './lib/pushClient.js';
 
 // Natural emotion cycle pool for automatic, subtle idle expression transitions
 const IDLE_EMOTION_POOL = ['relaxed', 'happy', 'neutral', 'curious', 'relaxed', 'happy'];
@@ -66,13 +66,13 @@ export default function App() {
     setPushLoading(true);
     try {
       if (pushSubscribed) {
+        await showLocalNotification('Waguri ❤️', 'Test Alert: Device par notifications bilkul active hain! ✨');
         await sendTestNotification(authUser?.email || 'local-user');
-        alert('✨ Test notification bhej di hai! Check your phone notification bar.');
       } else {
         await subscribeToPush(authUser?.email || 'local-user');
         setPushSubscribed(true);
+        await showLocalNotification('Waguri ❤️', '🎉 Notifications Active: Waguri aapko sweet alerts bhejegi!');
         await sendTestNotification(authUser?.email || 'local-user');
-        alert('🎉 Notifications enable ho gayi hain! Waguri aapko phone par sweet alerts bhejegi.');
       }
     } catch (err) {
       console.error('[push] error:', err);
