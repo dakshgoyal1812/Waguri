@@ -688,8 +688,8 @@ body {
   --size-clock: 21.5rem;    /* 344px expanded ring diameter — plenty of distance and breathing room */
   --size-trigger: 3rem;     /* 48px trigger */
   --radius: calc(var(--size-clock) / 2 - var(--size-padding));
-  --step-angle: 25.5deg;    /* Spacious angle between each button */
-  --start-angle: 162deg;    /* Elegant crescent arc */
+  --step-angle: 21deg;      /* Comfortable angle between each button */
+  --start-angle: 165deg;    /* Elegant crescent arc */
 
   position: absolute;
   right: 22px;
@@ -791,7 +791,7 @@ body {
    rotate(θ) translateX(r) walks clockwise from center.
    The trailing rotate(-θ - dialRot) keeps icons upright at all 360° rotation angles! */
 .social-fab__button {
-  --angle: calc(var(--start-angle, 162deg) + var(--index, 0) * var(--step-angle, 25.5deg));
+  --angle: calc(var(--start-angle, 165deg) + var(--index, 0) * var(--step-angle, 21deg));
 
   position: absolute;
   left: calc(50% - var(--size-button) / 2);
@@ -847,19 +847,46 @@ body {
 }
 
 /* Per-action colors & explicit indices (avoids any sibling nth-child shift) */
-.social-fab__button.chat   { --index: 0; --color: 34, 184, 207; }  /* app cyan — chat panel */
-.social-fab__button.mic    { --index: 1; --color: 244, 114, 182; } /* app pink — hands-free mic */
-.social-fab__button.alarm  { --index: 2; --color: 245, 158, 11; }  /* amber gold — alarms & reminders */
-.social-fab__button.voice  { --index: 3; --color: 251, 146, 60; }  /* voice energy orange */
-.social-fab__button.bg     { --index: 4; --color: 99, 102, 241; }  /* theme indigo — background picker */
-.social-fab__button.notif  { --index: 5; --color: 16, 185, 129; }  /* emerald green — notification alerts */
-.social-fab__button.admin  { --index: 6; --color: 168, 85, 247; }  /* royal violet — admin access portal */
+.social-fab__button.chat      { --index: 0; --color: 34, 184, 207; }  /* app cyan — chat panel */
+.social-fab__button.mic       { --index: 1; --color: 244, 114, 182; } /* app pink — hands-free mic */
+.social-fab__button.voice     { --index: 2; --color: 251, 146, 60; }  /* voice energy orange */
+.social-fab__button.avatar    { --index: 3; --color: 139, 92, 246; }  /* royal purple / violet — 3D avatar companion */
+.social-fab__button.wallpaper { --index: 4; --color: 59, 130, 246; }  /* vibrant sky blue — stage wallpaper */
+.social-fab__button.bg        { --index: 4; --color: 59, 130, 246; }  /* alias for wallpaper */
+.social-fab__button.alarm     { --index: 5; --color: 245, 158, 11; }  /* amber gold — alarms & reminders */
+.social-fab__button.notif     { --index: 6; --color: 16, 185, 129; }  /* emerald green — notification alerts */
+.social-fab__button.admin     { --index: 7; --color: 236, 72, 153; }  /* fuchsia / magenta — admin access portal */
+
+/* Tooltip floating label on desktop hover */
+.social-fab__tooltip {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  bottom: calc(100% + 7px);
+  z-index: 10;
+}
 
 /* Hover affordances are DESKTOP-ONLY polish */
 @media (hover: hover) and (pointer: fine) {
   .social-fab__button:hover {
     background: rgba(var(--color), 0.98);
     transform: rotate(var(--angle)) translate(var(--radius)) rotate(calc(-1 * var(--angle) - var(--dial-rot, 0deg))) scale(1.12);
+  }
+  .social-fab__button:hover .social-fab__tooltip {
+    opacity: 1;
+    transform: translateY(0);
   }
   .social-fab__trigger:hover { transform: scale(1.07); }
 }
@@ -1283,7 +1310,7 @@ body {
     --size-button: 2.45rem;     /* ~39px action buttons on phones */
     --size-clock: 17.5rem;      /* 280px generous ring diameter — spacious, zero overlap */
     --size-trigger: 2.85rem;    /* 45px trigger — comfortable thumb target */
-    --step-angle: 25deg;        /* Spacious 25° spacing gives ~21px clean gap between buttons */
+    --step-angle: 20deg;        /* Clean 20° spacing gives balanced gap between buttons on phones */
     --start-angle: 165deg;
     right: 14px;
     bottom: max(74px, calc(74px + env(safe-area-inset-bottom, 0px)));
