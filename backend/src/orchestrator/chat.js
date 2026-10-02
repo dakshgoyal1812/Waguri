@@ -10,6 +10,7 @@ import { chunkText } from '../rag/chunker.js';
 import { storeAudio } from '../audioCache.js';
 import { waguriPersona } from '../personaSeed.js';
 import { needsLanguageRepair, languageRepairNudge } from '../lang/guard.js';
+import { combineProsody } from '../tts/avatarVoices.js';
 
 // Language self-heal: free-tier models in the failover pool violate the Hinglish
 // contract at different rates. When a reply comes back in the wrong language,
@@ -45,7 +46,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
   }
 
   // Shared tail of every reply: mood resolution + persistence + TTS + response shape.
-  async function finishReply({ persona, conversationId, reply, taggedEmotion, userMessageId, llmResult, memoriesCount, exchangeText, userText, languageRepaired }) {
+  async function finishReply({ persona, conversationId, reply, taggedEmotion, userMessageId, llmResult, memoriesCount, exchangeText, userText, languageRepaired, avatarId }) {
     const mood = moodEngine ? await moodEngine.detect(reply, taggedEmotion, persona, userText) : null;
     const expression = moodEngine ? moodEngine.expressionFor(mood, taggedEmotion) : (taggedEmotion || 'neutral');
 
@@ -65,11 +66,12 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
         console.error('[rag] async memory store failed:', e.message));
     }, 0);
 
-    // TTS with mood-driven prosody (PRD sections 3 + 9.4): failure degrades to text-only.
+    // TTS with combined avatar voice profile & mood-driven prosody
     let audioUrl = null;
     let ttsProvider = null;
     try {
-      const prosody = moodEngine ? moodEngine.prosodyFor(mood) : {};
+      const baseProsody = moodEngine ? moodEngine.prosodyFor(mood) : {};
+      const prosody = combineProsody(baseProsody, avatarId || 'waguri');
       const { audio, mime, provider } = await synthesize(reply, prosody);
       const id = storeAudio(audio, mime);
       audioUrl = `${publicBase()}/api/audio/${id}`;
@@ -100,7 +102,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
     return out;
   }
 
-  async function handle({ conversationId, personaId, userId, message }) {
+  async function handle({ conversationId, personaId, userId, message, avatarId }) {
     const persona = await getPersona(personaId);
 
     let conversation = conversationId ? await storage.getConversation(conversationId) : null;
@@ -159,12 +161,13 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
       exchangeText: `User said: ${message}\n${persona.name} replied: ${reply}`,
       userText: message,
       languageRepaired: repaired,
+      avatarId,
     });
   }
 
   // Feeling layer: an unprompted in-character line when the user has been quiet.
   // Same pipeline as handle() but driven by idle time instead of a user message.
-  async function idleComment({ conversationId, personaId, idleSeconds }) {
+  async function idleComment({ conversationId, personaId, idleSeconds, avatarId }) {
     const persona = await getPersona(personaId);
 
     let conversation = conversationId ? await storage.getConversation(conversationId) : null;
@@ -210,6 +213,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
       llmResult,
       memoriesCount: 0,
       languageRepaired: repaired,
+      avatarId,
     });
   }
 

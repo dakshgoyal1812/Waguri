@@ -19,6 +19,7 @@ export function createMemoryStorage() {
       ['goyaldaksh284@gmail.com', { email: 'goyaldaksh284@gmail.com', added_by: 'system', created_at: new Date().toISOString() }],
     ]),
     pushSubscriptions: new Map(), // endpoint -> { id, user_id, endpoint, p256dh, auth, created_at }
+    alarms: new Map(), // id -> { id, user_id, title, message, time, days, type, enabled, last_fired_date, created_at }
   };
   let seq = 0;
   const id = () => `id-${++seq}-${Math.random().toString(36).slice(2, 10)}`;
@@ -253,6 +254,41 @@ export function createMemoryStorage() {
       const times = subs.map((s) => (s.last_notified_at ? new Date(s.last_notified_at).getTime() : 0));
       const max = Math.max(0, ...times);
       return max > 0 ? max : null;
+    },
+
+    // ---- Alarms & Voice Reminders ----
+    async listAlarms(userId) {
+      return [...db.alarms.values()]
+        .filter((a) => !userId || a.user_id === userId)
+        .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    },
+    async upsertAlarm({ id: alarmId, user_id = 'local-user', title, message, time, days = [], type = 'alarm', enabled = true }) {
+      const actualId = alarmId || id();
+      const existing = db.alarms.get(actualId);
+      const row = {
+        id: actualId,
+        user_id,
+        title: title || 'Reminder',
+        message: message || '',
+        time, // 'HH:MM'
+        days: Array.isArray(days) ? days : (days ? String(days).split(',') : []),
+        type: type || 'alarm',
+        enabled: enabled !== false,
+        last_fired_date: existing?.last_fired_date || null,
+        created_at: existing?.created_at || new Date().toISOString(),
+      };
+      db.alarms.set(actualId, row);
+      return clone(row);
+    },
+    async deleteAlarm(alarmId) {
+      return db.alarms.delete(alarmId);
+    },
+    async updateAlarmFired(alarmId, dateStr, disable = false) {
+      const a = db.alarms.get(alarmId);
+      if (a) {
+        a.last_fired_date = dateStr;
+        if (disable) a.enabled = false;
+      }
     },
 
     // test hook

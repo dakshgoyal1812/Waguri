@@ -1,11 +1,12 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { X, ImagePlus, UserRound, Upload, Trash2, Check } from 'lucide-react';
+import { X, ImagePlus, UserRound, Upload, Trash2, Check, Volume2, Loader2 } from 'lucide-react';
 import {
   BUNDLED_AVATARS,
   listCustomVrms,
   saveCustomVrm,
   deleteCustomVrm,
 } from '../lib/vrmStore.js';
+import { synthesizeToUrl } from '../api.js';
 
 const PRESETS = [
   { id: 'room', name: 'Cozy Room', desc: 'Anime wallpaper on phone / 3D room on laptop' },
@@ -53,6 +54,47 @@ export default function BackgroundPicker({
     setDraftCustom(background?.custom || '');
     listCustomVrms().then(setCustomVrms).catch(() => setCustomVrms([]));
   }, [isOpen, background, initialTab]);
+
+  const [playingVoiceId, setPlayingVoiceId] = useState(null);
+  const audioPreviewRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (audioPreviewRef.current) {
+        audioPreviewRef.current.pause();
+        audioPreviewRef.current = null;
+      }
+    };
+  }, []);
+
+  const handlePreviewVoice = async (e, a) => {
+    e.stopPropagation();
+    if (audioPreviewRef.current) {
+      audioPreviewRef.current.pause();
+      audioPreviewRef.current = null;
+    }
+    if (playingVoiceId === a.id) {
+      setPlayingVoiceId(null);
+      return;
+    }
+    setPlayingVoiceId(a.id);
+    try {
+      const text = a.voiceGreeting || `Konnichiwa! Main ${a.name} hoon!`;
+      const res = await synthesizeToUrl(text, 'happy', a.id);
+      if (res?.audio_url) {
+        const audio = new Audio(res.audio_url);
+        audioPreviewRef.current = audio;
+        audio.onended = () => setPlayingVoiceId(null);
+        audio.onerror = () => setPlayingVoiceId(null);
+        await audio.play();
+      } else {
+        setPlayingVoiceId(null);
+      }
+    } catch (err) {
+      console.warn('Voice preview error:', err);
+      setPlayingVoiceId(null);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -370,6 +412,29 @@ export default function BackgroundPicker({
                   </div>
                   <span className="bg-name">{a.name}</span>
                   <span className="bg-desc">{a.desc || formatSize(a.size)}</span>
+                  {a.voiceLabel && (
+                    <span className="vrm-voice-tag" title="Character voice pitch & tone">
+                      🎵 {a.voiceLabel}
+                    </span>
+                  )}
+                  {a.bundled && (
+                    <button
+                      type="button"
+                      className={`vrm-preview-btn ${playingVoiceId === a.id ? 'playing' : ''}`}
+                      onClick={(e) => handlePreviewVoice(e, a)}
+                      title={`Listen to ${a.name}'s voice tone`}
+                    >
+                      {playingVoiceId === a.id ? (
+                        <>
+                          <Loader2 size={12} className="spin" /> Playing voice...
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 size={12} /> Preview voice
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

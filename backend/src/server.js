@@ -25,6 +25,7 @@ import { createGamesModule } from './games/index.js';
 import { storeAudio, getAudio } from './audioCache.js';
 import { createPushService } from './push/index.js';
 import { createPushScheduler } from './push/scheduler.js';
+import { combineProsody } from './tts/avatarVoices.js';
 
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a proxy; request host must survive
@@ -94,8 +95,8 @@ const pushScheduler = createPushScheduler({
   getPersona: async () => await storage.getDefaultPersona(),
 });
 
-// Start background 5-minute autonomous evaluation ticker
-pushScheduler.start(300_000);
+// Start background 45-second autonomous evaluation ticker for alarms, reminders & slots
+pushScheduler.start(45_000);
 
 // Absolute audio URLs need the request origin when PUBLIC_BASE_URL is unset.
 app.use((req, _res, next) => {
@@ -133,7 +134,7 @@ app.get('/', handleHealth);
 
 app.post('/api/chat', async (req, res, next) => {
   try {
-    const { conversation_id, persona_id, user_id, message } = req.body || {};
+    const { conversation_id, persona_id, user_id, message, avatar_id } = req.body || {};
     if (!message || typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'message (string) is required' });
     }
@@ -142,6 +143,7 @@ app.post('/api/chat', async (req, res, next) => {
       personaId: persona_id,
       userId: user_id || 'local-user',
       message: message.trim(),
+      avatarId: avatar_id || 'waguri',
     });
     res.json(result);
   } catch (e) { next(e); }
@@ -151,11 +153,12 @@ app.post('/api/chat', async (req, res, next) => {
 // send a spontaneous in-character line (text + emotion + voice).
 app.post('/api/idle-comment', async (req, res, next) => {
   try {
-    const { conversation_id, persona_id, idle_seconds } = req.body || {};
+    const { conversation_id, persona_id, idle_seconds, avatar_id } = req.body || {};
     const result = await orchestrator.idleComment({
       conversationId: conversation_id,
       personaId: persona_id,
       idleSeconds: parseInt(idle_seconds, 10) || 120,
+      avatarId: avatar_id || 'waguri',
     });
     res.json(result);
   } catch (e) { next(e); }
@@ -253,6 +256,73 @@ app.all('/api/push/trigger-auto', async (req, res, next) => {
     const force = req.query?.force === 'true' || req.body?.force === true;
     const slot = req.query?.slot || req.body?.slot || null;
     const result = await pushScheduler.evaluateAndSend({ force, slotOverride: slot });
+    res.json({ ok: true, result });
+  } catch (e) { next(e); }
+});
+
+// --- Alarms & Reminders (Option 5: Automatic Background Web Push) ---
+app.get('/api/alarms', async (req, res, next) => {
+  try {
+    const userId = req.query.user_id || 'local-user';
+    const alarms = await storage.listAlarms(userId);
+    res.json({ ok: true, alarms });
+  } catch (e) { next(e); }
+});
+
+app.post('/api/alarms', async (req, res, next) => {
+  try {
+    const alarm = req.body || {};
+    if (!alarm.title || !alarm.time) {
+      return res.status(400).json({ error: 'title and time are required' });
+    }
+    const saved = await storage.upsertAlarm(alarm);
+    res.json({ ok: true, alarm: saved });
+  } catch (e) { next(e); }
+});
+
+app.delete('/api/alarms/:id', async (req, res, next) => {
+  try {
+    const deleted = await storage.deleteAlarm(req.params.id);
+    res.json({ ok: true, deleted });
+  } catch (e) { next(e); }
+});
+
+app.post('/api/alarms/:id/toggle', async (req, res, next) => {
+  try {
+    const { enabled } = req.body || {};
+    const alarms = await storage.listAlarms();
+    const existing = alarms.find((a) => a.id === req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Alarm not found' });
+    const isEnabled = typeof enabled === 'boolean' ? enabled : !existing.enabled;
+    const updated = await storage.upsertAlarm({ ...existing, enabled: isEnabled });
+    res.json({ ok: true, alarm: updated });
+  } catch (e) { next(e); }
+});
+
+app.post('/api/alarms/test', async (req, res, next) => {
+  try {
+    const { user_id, title, message, type } = req.body || {};
+    const notifTitle = type === 'reminder'
+      ? `🔔 Reminder Test: ${title || 'Drink Water'}`
+      : `⏰ Wakeup Alarm Test: ${title || 'Morning Alarm'}`;
+    const notifBody = message || (type === 'reminder'
+      ? 'Hey! Test reminder successfully delivered to your device ✨'
+      : 'Wake up sleepyhead! Your Waguri alarm is working in the background! ❤️');
+
+    const result = await pushService.sendNotification({
+      userId: user_id || 'local-user',
+      title: notifTitle,
+      body: notifBody,
+      tag: `waguri-alarm-test-${Date.now()}`,
+      url: `/?alarm=test&title=${encodeURIComponent(title || 'Test')}`,
+    });
+    res.json({ ok: true, result });
+  } catch (e) { next(e); }
+});
+
+app.post('/api/alarms/evaluate', async (_req, res, next) => {
+  try {
+    const result = await pushScheduler.evaluateAndSend({ force: true });
     res.json({ ok: true, result });
   } catch (e) { next(e); }
 });
@@ -397,10 +467,11 @@ app.post('/api/character/update', requireAdmin, async (req, res, next) => {
 });
 
 // Spec route: standalone TTS proxy. The client never talks to TTS providers
-// directly — POST { text, mood? } returns the synthesized audio bytes.
+// Spec route: standalone TTS proxy. The client never talks to TTS providers
+// directly — POST { text, mood?, avatar_id? } returns the synthesized audio bytes.
 app.post('/api/tts', async (req, res, next) => {
   try {
-    const { text, mood } = req.body || {};
+    const { text, mood, avatar_id } = req.body || {};
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ error: 'text (string) is required' });
     }
@@ -410,6 +481,7 @@ app.post('/api/tts', async (req, res, next) => {
       const m = rows.find((r) => r.name === String(mood).toLowerCase());
       if (m) prosody = moodEngine.prosodyFor(m);
     }
+    prosody = combineProsody(prosody, avatar_id || 'waguri');
     const { audio, mime } = await synthesize(text.trim(), prosody);
     res.set('Content-Type', mime);
     res.set('Cache-Control', 'no-store');
@@ -425,7 +497,7 @@ app.post('/api/tts', async (req, res, next) => {
 // calls this with a message's text to mint a FRESH url and keep lip-sync working.
 app.post('/api/tts/url', async (req, res, next) => {
   try {
-    const { text, mood } = req.body || {};
+    const { text, mood, avatar_id } = req.body || {};
     if (!text || typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ error: 'text (string) is required' });
     }
@@ -435,6 +507,7 @@ app.post('/api/tts/url', async (req, res, next) => {
       const m = rows.find((r) => r.name === String(mood).toLowerCase());
       if (m) prosody = moodEngine.prosodyFor(m);
     }
+    prosody = combineProsody(prosody, avatar_id || 'waguri');
     const { audio, mime } = await synthesize(text.trim(), prosody);
     const id = storeAudio(audio, mime);
     const base = config.publicBaseUrl

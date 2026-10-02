@@ -38,6 +38,19 @@ export function createSupabaseStorage(databaseUrl) {
           );
           alter table push_subscriptions add column if not exists last_notified_at timestamptz;
           alter table push_subscriptions add column if not exists last_slot text;
+
+          create table if not exists reminders_alarms (
+            id uuid primary key default gen_random_uuid(),
+            user_id text not null default 'local-user',
+            title text not null default 'Reminder',
+            message text,
+            time text not null,
+            days jsonb not null default '[]'::jsonb,
+            type text not null default 'alarm',
+            enabled boolean not null default true,
+            last_fired_date text,
+            created_at timestamptz not null default now()
+          );
         `);
       } catch (err) {
         console.warn('[storage] schema ensure notice:', err.message);
@@ -355,6 +368,75 @@ export function createSupabaseStorage(databaseUrl) {
         return rows[0]?.last_time ? new Date(rows[0].last_time).getTime() : null;
       } catch {
         return null;
+      }
+    },
+
+    // ---- Alarms & Voice Reminders ----
+    async listAlarms(userId) {
+      try {
+        const query = userId
+          ? 'select * from reminders_alarms where user_id = $1 order by time asc'
+          : 'select * from reminders_alarms order by time asc';
+        const { rows } = await pool.query(query, userId ? [userId] : []);
+        return rows.map((r) => ({
+          ...r,
+          days: Array.isArray(r.days) ? r.days : (r.days ? (typeof r.days === 'string' ? JSON.parse(r.days) : r.days) : []),
+        }));
+      } catch (err) {
+        console.warn('[storage] listAlarms error:', err.message);
+        return [];
+      }
+    },
+    async upsertAlarm({ id: alarmId, user_id = 'local-user', title, message, time, days = [], type = 'alarm', enabled = true }) {
+      try {
+        const daysJson = JSON.stringify(Array.isArray(days) ? days : (days ? String(days).split(',') : []));
+        if (alarmId) {
+          const { rows } = await pool.query(
+            `insert into reminders_alarms (id, user_id, title, message, time, days, type, enabled)
+             values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+             on conflict (id) do update set
+               title = excluded.title,
+               message = excluded.message,
+               time = excluded.time,
+               days = excluded.days,
+               type = excluded.type,
+               enabled = excluded.enabled
+             returning *`,
+            [alarmId, user_id, title || 'Reminder', message || '', time, daysJson, type || 'alarm', enabled !== false]
+          );
+          return rows[0];
+        } else {
+          const { rows } = await pool.query(
+            `insert into reminders_alarms (user_id, title, message, time, days, type, enabled)
+             values ($1, $2, $3, $4, $5::jsonb, $6, $7)
+             returning *`,
+            [user_id, title || 'Reminder', message || '', time, daysJson, type || 'alarm', enabled !== false]
+          );
+          return rows[0];
+        }
+      } catch (err) {
+        console.error('[storage] upsertAlarm error:', err.message);
+        throw err;
+      }
+    },
+    async deleteAlarm(alarmId) {
+      try {
+        const { rowCount } = await pool.query('delete from reminders_alarms where id = $1', [alarmId]);
+        return rowCount > 0;
+      } catch (err) {
+        console.error('[storage] deleteAlarm error:', err.message);
+        return false;
+      }
+    },
+    async updateAlarmFired(alarmId, dateStr, disable = false) {
+      try {
+        if (disable) {
+          await pool.query('update reminders_alarms set last_fired_date = $2, enabled = false where id = $1', [alarmId, dateStr]);
+        } else {
+          await pool.query('update reminders_alarms set last_fired_date = $2 where id = $1', [alarmId, dateStr]);
+        }
+      } catch (err) {
+        console.warn('[storage] updateAlarmFired error:', err.message);
       }
     },
   };
