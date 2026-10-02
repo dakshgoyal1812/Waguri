@@ -47,10 +47,12 @@ export function createSupabaseStorage(databaseUrl) {
             time text not null,
             days jsonb not null default '[]'::jsonb,
             type text not null default 'alarm',
+            avatar_id text default 'waguri',
             enabled boolean not null default true,
             last_fired_date text,
             created_at timestamptz not null default now()
           );
+          alter table reminders_alarms add column if not exists avatar_id text default 'waguri';
         `);
       } catch (err) {
         console.warn('[storage] schema ensure notice:', err.message);
@@ -387,32 +389,68 @@ export function createSupabaseStorage(databaseUrl) {
         return [];
       }
     },
-    async upsertAlarm({ id: alarmId, user_id = 'local-user', title, message, time, days = [], type = 'alarm', enabled = true }) {
+    async upsertAlarm({ id: alarmId, user_id = 'local-user', title, message, time, days = [], type = 'alarm', avatar_id = 'waguri', enabled = true }) {
       try {
         const daysJson = JSON.stringify(Array.isArray(days) ? days : (days ? String(days).split(',') : []));
-        if (alarmId) {
-          const { rows } = await pool.query(
-            `insert into reminders_alarms (id, user_id, title, message, time, days, type, enabled)
-             values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
-             on conflict (id) do update set
-               title = excluded.title,
-               message = excluded.message,
-               time = excluded.time,
-               days = excluded.days,
-               type = excluded.type,
-               enabled = excluded.enabled
-             returning *`,
-            [alarmId, user_id, title || 'Reminder', message || '', time, daysJson, type || 'alarm', enabled !== false]
-          );
-          return rows[0];
-        } else {
-          const { rows } = await pool.query(
-            `insert into reminders_alarms (user_id, title, message, time, days, type, enabled)
-             values ($1, $2, $3, $4, $5::jsonb, $6, $7)
-             returning *`,
-            [user_id, title || 'Reminder', message || '', time, daysJson, type || 'alarm', enabled !== false]
-          );
-          return rows[0];
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const validId = typeof alarmId === 'string' && UUID_REGEX.test(alarmId) ? alarmId : null;
+
+        // Try with avatar_id first, fallback without avatar_id if column not yet migrated
+        try {
+          if (validId) {
+            const { rows } = await pool.query(
+              `insert into reminders_alarms (id, user_id, title, message, time, days, type, avatar_id, enabled)
+               values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+               on conflict (id) do update set
+                 title = excluded.title,
+                 message = excluded.message,
+                 time = excluded.time,
+                 days = excluded.days,
+                 type = excluded.type,
+                 avatar_id = excluded.avatar_id,
+                 enabled = excluded.enabled
+               returning *`,
+              [validId, user_id, title || 'Reminder', message || '', time, daysJson, type || 'alarm', avatar_id || 'waguri', enabled !== false]
+            );
+            return rows[0];
+          } else {
+            const { rows } = await pool.query(
+              `insert into reminders_alarms (user_id, title, message, time, days, type, avatar_id, enabled)
+               values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
+               returning *`,
+              [user_id, title || 'Reminder', message || '', time, daysJson, type || 'alarm', avatar_id || 'waguri', enabled !== false]
+            );
+            return rows[0];
+          }
+        } catch (colErr) {
+          // If avatar_id column does not exist yet, fallback cleanly
+          if (colErr.message && colErr.message.includes('avatar_id')) {
+            if (validId) {
+              const { rows } = await pool.query(
+                `insert into reminders_alarms (id, user_id, title, message, time, days, type, enabled)
+                 values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+                 on conflict (id) do update set
+                   title = excluded.title,
+                   message = excluded.message,
+                   time = excluded.time,
+                   days = excluded.days,
+                   type = excluded.type,
+                   enabled = excluded.enabled
+                 returning *`,
+                [validId, user_id, title || 'Reminder', message || '', time, daysJson, type || 'alarm', enabled !== false]
+              );
+              return rows[0];
+            } else {
+              const { rows } = await pool.query(
+                `insert into reminders_alarms (user_id, title, message, time, days, type, enabled)
+                 values ($1, $2, $3, $4, $5::jsonb, $6, $7)
+                 returning *`,
+                [user_id, title || 'Reminder', message || '', time, daysJson, type || 'alarm', enabled !== false]
+              );
+              return rows[0];
+            }
+          }
+          throw colErr;
         }
       } catch (err) {
         console.error('[storage] upsertAlarm error:', err.message);
@@ -421,6 +459,8 @@ export function createSupabaseStorage(databaseUrl) {
     },
     async deleteAlarm(alarmId) {
       try {
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (!UUID_REGEX.test(alarmId)) return false;
         const { rowCount } = await pool.query('delete from reminders_alarms where id = $1', [alarmId]);
         return rowCount > 0;
       } catch (err) {
@@ -430,6 +470,8 @@ export function createSupabaseStorage(databaseUrl) {
     },
     async updateAlarmFired(alarmId, dateStr, disable = false) {
       try {
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (!UUID_REGEX.test(alarmId)) return;
         if (disable) {
           await pool.query('update reminders_alarms set last_fired_date = $2, enabled = false where id = $1', [alarmId, dateStr]);
         } else {

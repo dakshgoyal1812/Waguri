@@ -169,7 +169,8 @@ export default function AlarmModal({ isOpen, onClose, activeVrmId = 'waguri', on
     }
 
     const newAlarm = {
-      id: `alarm-${Date.now()}`,
+      // Use standard UUID if available, or omit so Postgres/Supabase auto-generates gen_random_uuid()
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined,
       user_id: 'local-user',
       title: formTitle.trim(),
       time: formTime,
@@ -182,8 +183,9 @@ export default function AlarmModal({ isOpen, onClose, activeVrmId = 'waguri', on
     };
 
     try {
-      await saveAlarm(newAlarm);
-      setAlarms((prev) => [newAlarm, ...prev.filter((a) => a.id !== newAlarm.id)]);
+      const res = await saveAlarm(newAlarm);
+      const savedAlarm = res?.alarm || { ...newAlarm, id: res?.id || newAlarm.id || crypto.randomUUID() };
+      setAlarms((prev) => [savedAlarm, ...prev.filter((a) => a.id !== savedAlarm.id && a.id !== newAlarm.id)]);
       setShowAddForm(false);
       showToast(`⏰ "${formTitle}" scheduled! It will ring at ${formTime} IST automatically.`);
     } catch (err) {
