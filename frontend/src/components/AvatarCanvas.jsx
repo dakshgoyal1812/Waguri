@@ -223,11 +223,15 @@ export default function AvatarCanvas({
   isSpeaking = false,
   chatOpen = true,
   vrmUrl = DEFAULT_VRM_URL,
+  showRoom = false,
   onModelLoaded = () => {},
   onTouchReaction = () => {},
 }) {
   const mountRef = useRef(null);
   const vrmRef = useRef(null);
+  const sceneRef = useRef(null);
+  const roomGroupRef = useRef(null);
+  const showRoomRef = useRef(showRoom);
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
   const sourceNodeRef = useRef(null);
@@ -236,6 +240,17 @@ export default function AvatarCanvas({
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [retryKey, setRetryKey] = useState(0); // bumped by the Retry button
+
+  // Synchronize 3D room visibility dynamically without rebuilding VRM
+  useEffect(() => {
+    showRoomRef.current = showRoom;
+    if (roomGroupRef.current) {
+      roomGroupRef.current.visible = Boolean(showRoom);
+    }
+    if (sceneRef.current) {
+      sceneRef.current.background = showRoom ? new THREE.Color(0xfef9c3) : null;
+    }
+  }, [showRoom]);
 
   // Interactive touch reactions (head pat, shoulder tap)
   const touchReaction = useRef({ active: false, type: null, t: 0, duration: 2.0 });
@@ -553,6 +568,75 @@ export default function AvatarCanvas({
     const lookTarget = new THREE.Object3D();
     lookTarget.position.set(0, 1.34, 2.5);
     scene.add(lookTarget);
+
+    sceneRef.current = scene;
+
+    // 3D Sitting Room Stage setup
+    const roomGroup = new THREE.Group();
+    roomGroup.name = 'sittingRoomStage';
+    roomGroupRef.current = roomGroup;
+    scene.add(roomGroup);
+
+    // Warm ambient and accent lights specifically for the room stage
+    const roomAmbient = new THREE.AmbientLight(0xffeedd, 0.65);
+    roomGroup.add(roomAmbient);
+
+    const roomWarmPoint = new THREE.PointLight(0xffbe85, 1.4, 9);
+    roomWarmPoint.position.set(0, 2.6, 0.4);
+    roomGroup.add(roomWarmPoint);
+
+    // Soft grounded contact shadow under avatar's feet
+    const shadowGeo = new THREE.PlaneGeometry(0.85, 0.85);
+    const sCanvas = document.createElement('canvas');
+    sCanvas.width = 64;
+    sCanvas.height = 64;
+    const sCtx = sCanvas.getContext('2d');
+    const grad = sCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(30, 20, 15, 0.55)');
+    grad.addColorStop(0.5, 'rgba(30, 20, 15, 0.22)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    sCtx.fillStyle = grad;
+    sCtx.fillRect(0, 0, 64, 64);
+    const shadowTex = new THREE.CanvasTexture(sCanvas);
+    const shadowMat = new THREE.MeshBasicMaterial({
+      map: shadowTex,
+      transparent: true,
+      depthWrite: false,
+    });
+    const contactShadow = new THREE.Mesh(shadowGeo, shadowMat);
+    contactShadow.rotation.x = -Math.PI / 2;
+    contactShadow.position.set(0, 0.005, 0);
+    roomGroup.add(contactShadow);
+
+    // Load the baked 3D sitting room
+    const roomLoader = new GLTFLoader();
+    roomLoader.load(
+      '/room.glb',
+      (gltf) => {
+        if (disposed) return;
+        const roomScene = gltf.scene;
+        roomScene.traverse((obj) => {
+          if (obj.isMesh && obj.material) {
+            obj.material.side = THREE.DoubleSide;
+            if (obj.material.map) {
+              obj.material.map.colorSpace = THREE.SRGBColorSpace;
+            }
+          }
+        });
+        roomGroup.add(roomScene);
+        roomGroup.visible = showRoomRef.current;
+      },
+      undefined,
+      (err) => {
+        console.warn('[waguri] Room model failed to load:', err);
+      }
+    );
+
+    // Set initial visibility
+    roomGroup.visible = showRoomRef.current;
+    if (showRoomRef.current) {
+      scene.background = new THREE.Color(0xfef9c3);
+    }
 
     let disposed = false;
     let cleanupModel = null;
@@ -1298,6 +1382,8 @@ export default function AvatarCanvas({
 
     return () => {
       disposed = true;
+      roomGroupRef.current = null;
+      sceneRef.current = null;
       cancelAnimationFrame(animId);
       resizeObserver?.disconnect();
       window.removeEventListener('resize', onWinResize);

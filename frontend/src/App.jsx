@@ -210,8 +210,8 @@ export default function App() {
   // (No theme state; the CSS light palette is the default.)
 
   const [background, setBackground] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('waguri_background')) || { id: 'wave', custom: '' }; }
-    catch { return { id: 'wave', custom: '' }; }
+    try { return JSON.parse(localStorage.getItem('waguri_background')) || { id: 'room', custom: '' }; }
+    catch { return { id: 'room', custom: '' }; }
   });
   useEffect(() => {
     try { localStorage.setItem('waguri_background', JSON.stringify(background)); } catch { /* custom image too big for localStorage */ }
@@ -466,6 +466,19 @@ export default function App() {
 
   // Helper to render active stage or auth background
   const renderBackground = () => {
+    if (background.id === 'room') {
+      return (
+        <div
+          className="bg-room-ambience"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'radial-gradient(ellipse at 50% 30%, rgba(254, 243, 199, 0.25) 0%, rgba(30, 27, 75, 0.85) 100%), #1e1b4b',
+            pointerEvents: 'none',
+          }}
+        />
+      );
+    }
     if (background.id === 'sunset') return <SunsetBackground />;
     if (background.id === 'midnight') return <MidnightSkyBackground />;
     if (background.id === 'paper') return <PaperBackground />;
@@ -623,6 +636,7 @@ export default function App() {
         isSpeaking={isSpeaking}
         chatOpen={chatOpen}
         vrmUrl={vrmUrl}
+        showRoom={background?.id === 'room'}
         onTouchReaction={(type) => {
           if (type === 'headPat') {
             setCurrentEmotion('relaxed');
