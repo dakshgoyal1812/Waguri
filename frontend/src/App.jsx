@@ -186,6 +186,7 @@ export default function App() {
   // 360° Interactive Rotary Wheel / Dial state for action buttons
   const [dialRotation, setDialRotation] = useState(0);
   const [isDialDragging, setIsDialDragging] = useState(false);
+  const [isDialRolling, setIsDialRolling] = useState(false);
   const dialDragRef = useRef({
     isDown: false,
     hasDragged: false,
@@ -194,7 +195,9 @@ export default function App() {
     accumulatedDelta: 0,
     velocity: 0,
     lastTime: 0,
+    currentRotation: 0,
     rafId: null,
+    lastHapticAngle: 0,
   });
 
   // Inertia animation cleanup
@@ -206,6 +209,14 @@ export default function App() {
     };
   }, []);
 
+  // Update CSS custom property directly for 120 FPS smooth hardware acceleration
+  const applyRotation = (rot) => {
+    dialDragRef.current.currentRotation = rot;
+    if (fabMenuRef.current) {
+      fabMenuRef.current.style.setProperty('--dial-rot', `${rot}deg`);
+    }
+  };
+
   // Reset rotation to 0 whenever the user opens the dial menu so it always expands in default clean position
   useEffect(() => {
     if (fabOpen) {
@@ -213,8 +224,12 @@ export default function App() {
         cancelAnimationFrame(dialDragRef.current.rafId);
         dialDragRef.current.rafId = null;
       }
-      setDialRotation(0);
+      dialDragRef.current.currentRotation = 0;
+      dialDragRef.current.velocity = 0;
       dialDragRef.current.hasDragged = false;
+      setIsDialRolling(false);
+      setDialRotation(0);
+      applyRotation(0);
     }
   }, [fabOpen]);
 
@@ -234,81 +249,104 @@ export default function App() {
       dialDragRef.current.rafId = null;
     }
     const angle = getPointerAngle(e.clientX, e.clientY);
-    dialDragRef.current = {
-      isDown: true,
-      hasDragged: false,
-      startAngle: angle,
-      prevAngle: angle,
-      accumulatedDelta: 0,
-      velocity: 0,
-      lastTime: performance.now(),
-      rafId: null,
-    };
+    dialDragRef.current.isDown = true;
+    dialDragRef.current.hasDragged = false;
+    dialDragRef.current.startAngle = angle;
+    dialDragRef.current.prevAngle = angle;
+    dialDragRef.current.accumulatedDelta = 0;
+    dialDragRef.current.velocity = 0;
+    dialDragRef.current.lastTime = performance.now();
+    dialDragRef.current.lastHapticAngle = dialDragRef.current.currentRotation;
+
     setIsDialDragging(true);
-    try {
-      e.currentTarget.setPointerCapture?.(e.pointerId);
-    } catch {}
-  };
+    setIsDialRolling(false);
 
-  const handleDialPointerMove = (e) => {
-    if (!dialDragRef.current.isDown) return;
-    const currentAngle = getPointerAngle(e.clientX, e.clientY);
-    let delta = currentAngle - dialDragRef.current.prevAngle;
-    if (delta > 180) delta -= 360;
-    if (delta < -180) delta += 360;
+    const onPointerMove = (moveEvent) => {
+      if (!dialDragRef.current.isDown) return;
+      if (moveEvent.cancelable) {
+        moveEvent.preventDefault();
+      }
 
-    const now = performance.now();
-    const dt = Math.max(1, now - dialDragRef.current.lastTime);
+      const currentAngle = getPointerAngle(moveEvent.clientX, moveEvent.clientY);
+      let delta = currentAngle - dialDragRef.current.prevAngle;
+      while (delta > 180) delta -= 360;
+      while (delta < -180) delta += 360;
 
-    dialDragRef.current.accumulatedDelta += Math.abs(delta);
-    if (dialDragRef.current.accumulatedDelta > 4) {
-      dialDragRef.current.hasDragged = true;
-    }
+      const now = performance.now();
+      const dt = Math.max(1, now - dialDragRef.current.lastTime);
 
-    dialDragRef.current.velocity = delta / dt;
-    dialDragRef.current.prevAngle = currentAngle;
-    dialDragRef.current.lastTime = now;
+      dialDragRef.current.accumulatedDelta += Math.abs(delta);
+      if (dialDragRef.current.accumulatedDelta > 5) {
+        dialDragRef.current.hasDragged = true;
+      }
 
-    setDialRotation((prev) => prev + delta);
-  };
+      // Smooth velocity filtering
+      const instantVelocity = delta / dt;
+      dialDragRef.current.velocity = dialDragRef.current.velocity * 0.4 + instantVelocity * 0.6;
+      dialDragRef.current.prevAngle = currentAngle;
+      dialDragRef.current.lastTime = now;
 
-  const handleDialPointerUp = (e) => {
-    if (!dialDragRef.current.isDown) return;
-    dialDragRef.current.isDown = false;
-    setIsDialDragging(false);
+      const newRot = dialDragRef.current.currentRotation + delta;
+      applyRotation(newRot);
 
-    try {
-      e.currentTarget.releasePointerCapture?.(e.pointerId);
-    } catch {}
+      // Subtle haptic tick every 25 degrees on mobile
+      if (Math.abs(newRot - dialDragRef.current.lastHapticAngle) >= 25) {
+        dialDragRef.current.lastHapticAngle = newRot;
+        try {
+          if (navigator.vibrate) navigator.vibrate(4);
+        } catch {}
+      }
+    };
 
-    const wasDragged = dialDragRef.current.hasDragged;
-    if (wasDragged) {
-      setTimeout(() => {
-        dialDragRef.current.hasDragged = false;
-      }, 120);
-    }
+    const onPointerUp = () => {
+      if (!dialDragRef.current.isDown) return;
+      dialDragRef.current.isDown = false;
+      setIsDialDragging(false);
 
-    // Apply smooth inertia if released with an angular spin flick
-    let v = dialDragRef.current.velocity * 16;
-    v = Math.max(-10, Math.min(10, v));
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
 
-    if (Math.abs(v) > 0.25) {
-      const step = () => {
-        v *= 0.92;
-        if (Math.abs(v) < 0.03) {
-          dialDragRef.current.rafId = null;
-          return;
-        }
-        setDialRotation((prev) => prev + v);
+      const wasDragged = dialDragRef.current.hasDragged;
+      if (wasDragged) {
+        setTimeout(() => {
+          dialDragRef.current.hasDragged = false;
+        }, 140);
+      }
+
+      // Inertia momentum with gentle friction decay
+      let v = dialDragRef.current.velocity * 16;
+      v = Math.max(-14, Math.min(14, v));
+
+      if (Math.abs(v) > 0.15) {
+        setIsDialRolling(true);
+        const friction = 0.93;
+        const step = () => {
+          v *= friction;
+          if (Math.abs(v) < 0.03) {
+            dialDragRef.current.rafId = null;
+            setIsDialRolling(false);
+            setDialRotation(dialDragRef.current.currentRotation);
+            return;
+          }
+          const nextRot = dialDragRef.current.currentRotation + v;
+          applyRotation(nextRot);
+          dialDragRef.current.rafId = requestAnimationFrame(step);
+        };
         dialDragRef.current.rafId = requestAnimationFrame(step);
-      };
-      dialDragRef.current.rafId = requestAnimationFrame(step);
-    }
+      } else {
+        setDialRotation(dialDragRef.current.currentRotation);
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
   };
 
   // Run a menu action, then fold the fan away — unless user was spinning the dial!
   const handleFabAction = (fn) => {
-    if (dialDragRef.current.hasDragged) {
+    if (dialDragRef.current.hasDragged || isDialDragging || isDialRolling) {
       return;
     }
     fn();
@@ -838,7 +876,7 @@ export default function App() {
           collapsed to one trigger; expands into a colored button fan on
           hover (desktop) or trigger tap (touch), spinning out like a clock */}
       <div
-        className={`social-fab ${fabOpen ? 'open' : ''} ${isDialDragging ? 'is-dragging' : ''}`}
+        className={`social-fab ${fabOpen ? 'open' : ''} ${isDialDragging ? 'is-dragging' : ''} ${isDialRolling ? 'is-rolling' : ''}`}
         ref={fabMenuRef}
         style={{ '--dial-rot': `${dialRotation}deg` }}
       >
@@ -846,12 +884,11 @@ export default function App() {
           className="social-fab__list"
           ref={dialRef}
           onPointerDown={handleDialPointerDown}
-          onPointerMove={handleDialPointerMove}
-          onPointerUp={handleDialPointerUp}
-          onPointerCancel={handleDialPointerUp}
         >
           {/* Visual rotary dial track ring */}
           <div className="social-fab__dial-ring" aria-hidden="true" />
+
+          {/* 1. Chat Panel */}
           <button
             className={`social-fab__button chat ${chatOpen ? 'active' : ''}`}
             onClick={() => handleFabAction(() => setChatOpen((o) => !o))}
@@ -860,6 +897,8 @@ export default function App() {
           >
             <MessageCircle size={19} />
           </button>
+
+          {/* 2. Hands-Free Mic */}
           <button
             className={`social-fab__button mic ${handsFree ? 'mic-active' : ''} ${voice.isSpeaking ? 'speaking' : ''}`}
             onClick={() => handleFabAction(toggleMic)}
@@ -876,14 +915,18 @@ export default function App() {
           >
             {handsFree ? <Mic size={19} /> : <MicOff size={19} />}
           </button>
+
+          {/* 3. Alarms & Voice Reminders */}
           <button
             className="social-fab__button alarm"
             onClick={() => handleFabAction(() => setIsAlarmModalOpen(true))}
-            title="Alarms & Voice Reminders (Option 5)"
+            title="Alarms & Voice Reminders"
             aria-label="Alarms & Voice Reminders"
           >
             <Clock size={19} />
           </button>
+
+          {/* 4. Voice Audio Auto-play */}
           <button
             className={`social-fab__button voice ${autoPlayAudio ? 'active' : ''}`}
             onClick={() => handleFabAction(() => setAutoPlayAudio(!autoPlayAudio))}
@@ -892,6 +935,8 @@ export default function App() {
           >
             {autoPlayAudio ? <Volume2 size={19} /> : <VolumeX size={19} />}
           </button>
+
+          {/* 5. Stage Background & Avatar */}
           <button
             className="social-fab__button bg"
             onClick={() => handleFabAction(() => setIsBgPickerOpen(true))}
@@ -899,6 +944,33 @@ export default function App() {
             aria-label="Stage background & Avatar"
           >
             <ImageIcon size={19} />
+          </button>
+
+          {/* 6. Girlfriend Notifications (Added from Topbar) */}
+          <button
+            className={`social-fab__button notif ${pushSubscribed ? 'active' : ''}`}
+            onClick={() => handleFabAction(handleTogglePush)}
+            disabled={pushLoading}
+            title={
+              pushLoading
+                ? 'Connecting alerts...'
+                : pushSubscribed
+                ? 'Notifications Active! Click to test alert'
+                : 'Enable girlfriend push notifications'
+            }
+            aria-label="Phone Notifications"
+          >
+            {pushSubscribed ? <BellRing size={19} /> : <Bell size={19} />}
+          </button>
+
+          {/* 7. Admin Access Portal (Added from Topbar) */}
+          <button
+            className="social-fab__button admin"
+            onClick={() => handleFabAction(() => setIsAdminPortalOpen(true))}
+            title="Admin Portal (Whitelist & Users)"
+            aria-label="Admin Access Portal"
+          >
+            <ShieldCheck size={19} />
           </button>
         </div>
         <button
