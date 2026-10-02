@@ -38,9 +38,9 @@ export function createPushService({ storage, callLLM, getPersona }) {
         console.log('[push] subscription expired or unsubscribed, removing:', sub.endpoint.slice(-20));
         await storage.deletePushSubscription(sub.endpoint).catch(() => {});
       } else {
-        console.error('[push] notification send failed for endpoint:', err.statusCode, err.message);
+        console.error('[push] notification send failed for endpoint:', err.statusCode, err.message, err.body);
       }
-      return { success: false, endpoint: sub.endpoint, error: err.message, status: err.statusCode };
+      return { success: false, endpoint: sub.endpoint, error: err.message, status: err.statusCode, body: err.body || null };
     }
   }
 
