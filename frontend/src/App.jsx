@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing, Clock, UserRound, Brain, PlugZap } from 'lucide-react';
+import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing, Clock, UserRound, Brain } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
@@ -12,7 +12,6 @@ import GoogleAuth from './components/GoogleAuth.jsx';
 import AdminPortal from './components/AdminPortal.jsx';
 import AlarmModal from './components/AlarmModal.jsx';
 import MemoryInspector from './components/MemoryInspector.jsx';
-import MCPConnectorModal from './components/MCPConnectorModal.jsx';
 import MemoryPasswordModal from './components/MemoryPasswordModal.jsx';
 import { isAdminEmail, DEFAULT_BYPASS_USER } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
@@ -147,7 +146,6 @@ export default function App() {
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
   const [isAlarmModalOpen, setIsAlarmModalOpen] = useState(false);
-  const [isMcpModalOpen, setIsMcpModalOpen] = useState(false);
   const [isMemoryPasswordModalOpen, setIsMemoryPasswordModalOpen] = useState(false);
 
   const handleOpenMemory = () => {
@@ -760,16 +758,6 @@ export default function App() {
           <span className="logo-text">WAGURI</span>
         </div>
         <div className="topbar-actions">
-          <button
-            type="button"
-            className="mcp-topbar-btn"
-            onClick={() => setIsMcpModalOpen(true)}
-            title="Model Context Protocol (MCP) Link & Tools"
-            aria-label="MCP Link & Tools"
-          >
-            <PlugZap size={14} />
-            <span className="mcp-topbar-btn-text">MCP Link</span>
-          </button>
           <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} compact />
           {isAdminEmail(authUser?.email) && (
             <button
@@ -987,23 +975,11 @@ export default function App() {
             <span className="social-fab__tooltip">Memory</span>
           </button>
 
-          {/* 9. MCP Tools & Link (Model Context Protocol) */}
-          <button
-            className={`social-fab__button mcp ${isMcpModalOpen ? 'active' : ''}`}
-            style={{ '--index': 8 }}
-            onClick={() => handleFabAction(() => setIsMcpModalOpen(true))}
-            title="MCP Tools & Link (Model Context Protocol)"
-            aria-label="MCP Tools & Link"
-          >
-            <PlugZap size={19} />
-            <span className="social-fab__tooltip">MCP Link</span>
-          </button>
-
-          {/* 10. Admin Access Portal (only visible to authorized admin accounts) */}
+          {/* 9. Admin Access Portal (only visible to authorized admin accounts) */}
           {isAdminEmail(authUser?.email) && (
             <button
               className={`social-fab__button admin ${isAdminPortalOpen ? 'active' : ''}`}
-              style={{ '--index': 9 }}
+              style={{ '--index': 8 }}
               onClick={() => handleFabAction(() => setIsAdminPortalOpen(true))}
               title="Admin Portal (Whitelist & Users)"
               aria-label="Admin Access Portal"
@@ -1057,10 +1033,7 @@ export default function App() {
         onPlayAlarmAudio={(url) => playUrl(url)}
       />
 
-      <MCPConnectorModal
-        isOpen={isMcpModalOpen}
-        onClose={() => setIsMcpModalOpen(false)}
-      />
+
 
       <MemoryPasswordModal
         isOpen={isMemoryPasswordModalOpen}

@@ -11,7 +11,6 @@ const tests = [
   { name: 'Account Chat Isolation & AES-256-GCM Encryption', file: 'test/test-account-chat-isolation.js' },
   { name: 'PWA Web Push Notifications & Autonomous Scheduler', file: 'test/test-push-notifications.js' },
   { name: 'Memory Inspector: Auth, CRUD, Search, Re-embed & Bulk Operations', file: 'test/memory.test.js' },
-  { name: 'Model Context Protocol (MCP): Server, Proxy & Tool Calls', file: 'test/test-mcp.js' },
 ];
 
 console.log('====================================================');

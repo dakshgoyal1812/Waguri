@@ -28,7 +28,6 @@ import { createPushScheduler } from './push/scheduler.js';
 import { combineProsody } from './tts/avatarVoices.js';
 import { requireAdmin } from './auth/admin.js';
 import memoryRouter, { setMemoryStorage, setMemoryEmbedder } from './routes/memory.js';
-import createMcpRouter from './routes/mcp.js';
 
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a proxy; request host must survive
@@ -625,9 +624,7 @@ app.get('/api/audio/:id', (req, res) => {
 // Memory Inspector API: browse, search, edit, delete, export memories
 app.use('/api/memory', memoryRouter);
 
-// Model Context Protocol (MCP) API: Native server & external proxy
-const mcpRouter = createMcpRouter({ storage, orchestrator, games, pushScheduler });
-app.use('/api/mcp', mcpRouter);
+
 
 // 404 for unknown API routes
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not found' }));
