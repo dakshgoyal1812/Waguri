@@ -44,3 +44,8 @@ scratch/
 **/ios/App/App.xcodeproj/xcuserdata/
 **/ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
 
+# Local portable tools & APK builds
+jdk17/
+*.apk
+release-apk/
+apk-output/
