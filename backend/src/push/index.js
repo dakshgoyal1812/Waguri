@@ -7,7 +7,7 @@ export function createPushService({ storage, callLLM, getPersona, sendToSub = nu
   const rawPublic = (config.push.vapidPublicKey || '').trim().replace(/^["']|["']$/g, '');
   const rawPrivate = (config.push.vapidPrivateKey || '').trim().replace(/^["']|["']$/g, '');
   let subject = (config.push.vapidSubject || '').trim().replace(/^["']|["']$/g, '');
-  if (!subject) subject = 'mailto:dakshgoyal1812@gmail.com';
+  if (!subject) subject = 'mailto:admin@waguri.app';
   if (!subject.startsWith('mailto:') && !subject.startsWith('http://') && !subject.startsWith('https://')) {
     subject = `mailto:${subject}`;
   }
