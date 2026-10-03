@@ -18,6 +18,7 @@ import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConve
 import { useVoiceInput } from './useVoiceInput.js';
 import { BUNDLED_AVATARS, DEFAULT_VRM_URL, getCustomVrmBlob } from './lib/vrmStore.js';
 import { isPushSupported, getExistingSubscription, subscribeToPush, unsubscribeFromPush, sendTestNotification, showLocalNotification } from './lib/pushClient.js';
+import { initCapacitor, triggerHaptic } from './lib/capacitor.js';
 
 // Natural emotion cycle pool for automatic, subtle idle expression transitions
 const IDLE_EMOTION_POOL = ['relaxed', 'happy', 'neutral', 'curious', 'relaxed', 'happy'];
@@ -62,7 +63,16 @@ export default function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [activeAudioUrl, setActiveAudioUrl] = useState(null);
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
-  const [authUser, setAuthUser] = useState(DEFAULT_BYPASS_USER);
+  const [authUser, setAuthUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('waguri_auth_user');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.email) return parsed;
+      }
+    } catch {}
+    return null;
+  });
   const [authLoading, setAuthLoading] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
@@ -157,6 +167,44 @@ export default function App() {
     } catch {}
     setIsMemoryPasswordModalOpen(true);
   };
+
+  // Android & iOS native integration: hardware back button & status bar
+  const backHandlerRef = useRef();
+  backHandlerRef.current = () => {
+    if (currentPath === '/memory') {
+      navigateTo('/');
+      return true;
+    }
+    if (isMemoryPasswordModalOpen) {
+      setIsMemoryPasswordModalOpen(false);
+      return true;
+    }
+    if (isAlarmModalOpen) {
+      setIsAlarmModalOpen(false);
+      return true;
+    }
+    if (isAdminPortalOpen) {
+      setIsAdminPortalOpen(false);
+      return true;
+    }
+    if (isWallpaperPickerOpen) {
+      setIsWallpaperPickerOpen(false);
+      return true;
+    }
+    if (isAvatarPickerOpen) {
+      setIsAvatarPickerOpen(false);
+      return true;
+    }
+    if (chatOpen) {
+      setChatOpen(false);
+      return true;
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    initCapacitor(() => backHandlerRef.current?.());
+  }, []);
 
   // Active avatar (VRM). The id persists; bundled ids resolve to /public URLs,
   // custom ids to IndexedDB blobs served via object URLs.
@@ -375,6 +423,7 @@ export default function App() {
     if (dialDragRef.current.hasDragged || isDialDragging || isDialRolling) {
       return;
     }
+    triggerHaptic();
     fn();
     setFabOpen(false);
   };
@@ -499,7 +548,14 @@ export default function App() {
   // When authUser changes (login, logout, account switch), immediately reset messages
   // and load only the target user's conversation.
   useEffect(() => {
-    const uid = authUser?.email || 'local-user';
+    // If not logged in, reset to clean welcome message and do NOT load anyone else's conversation
+    if (!authUser?.email) {
+      setMessages([WELCOME_MESSAGE]);
+      setConversationId(null);
+      return;
+    }
+
+    const uid = authUser.email;
     const storedId = localStorage.getItem(getStorageKey(uid));
 
     // Reset message state immediately to prevent any cross-account visual leak
@@ -633,11 +689,20 @@ export default function App() {
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
+    const guestId = (() => {
+      let g = localStorage.getItem('waguri_guest_device_id');
+      if (!g) {
+        g = 'guest_' + Math.random().toString(36).slice(2, 10);
+        try { localStorage.setItem('waguri_guest_device_id', g); } catch {}
+      }
+      return g;
+    })();
+
     try {
       const res = await callWithStaleRecovery(sendMessage, {
         conversationId,
         personaId: persona?.id,
-        userId: authUser?.email || 'local-user',
+        userId: authUser?.email || guestId,
         message: userText,
         avatarId: activeVrmId,
       });

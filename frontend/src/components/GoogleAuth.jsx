@@ -29,7 +29,16 @@ import {
 export { DEFAULT_BYPASS_USER };
 
 export default function GoogleAuth({ onUserChange, onLoadingChange, compact = false }) {
-  const [user, setUser] = useState(DEFAULT_BYPASS_USER);
+  const [user, setUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('waguri_auth_user');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.email) return parsed;
+      }
+    } catch {}
+    return null;
+  });
   const [signingIn, setSigningIn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -103,10 +112,10 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         console.warn('[auth] Stored auth session error:', err?.message);
       }
 
-      // 3. Fallback: DEFAULT_BYPASS_USER (Primary Admin Daksh Goyal)
+      // 3. Fallback: No active session -> remain signed out
       if (isMounted) {
-        setUser(DEFAULT_BYPASS_USER);
-        onUserChange?.(DEFAULT_BYPASS_USER);
+        setUser(null);
+        onUserChange?.(null);
         onLoadingChange?.(false);
       }
     };

@@ -8,6 +8,7 @@
 //
 // Games: tictactoe (board), rps (scored rounds), twentyq (she guesses your thing).
 import { needsLanguageRepair, languageRepairNudge } from '../lang/guard.js';
+import { fetchTriviaQuestion } from '../tools/publicApis.js';
 
 const MAX_TICTACTOE_NARRATE_CHARS = 400;
 
@@ -225,8 +226,18 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
         session = { kind: 'rps', score: { you: 0, her: 0, draws: 0 }, history: [], finished: false };
       } else if (game === 'twentyq') {
         session = { kind: 'twentyq', round: 0, maxRounds: 20, qa: [], currentQuestion: null, finished: false };
+      } else if (game === 'trivia') {
+        const trivia = await fetchTriviaQuestion();
+        session = {
+          kind: 'trivia',
+          round: 1,
+          maxRounds: 5,
+          score: { you: 0, her: 0 },
+          current: trivia.success ? trivia : null,
+          finished: false,
+        };
       } else {
-        const e = new Error(`unknown game: ${game} (tictactoe | rps | twentyq)`); e.status = 400; throw e;
+        const e = new Error(`unknown game: ${game} (tictactoe | rps | twentyq | trivia)`); e.status = 400; throw e;
       }
       sessions.set(sessionId, session);
 
@@ -234,6 +245,9 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
         tictactoe: 'Chalo tic-tac-toe khelte hain! Tum X ho aur pehla move tumhara — koi bhi square chuno!',
         rps: 'Rock paper scissors! Apna choice batao — dekhte hain tum mujhe hara pate ho ya nahi~',
         twentyq: 'Twenty questions khelte hain! Kuch bhi socho aur mere sawaalon ke jawab do. Pehla sawaal: kya yeh living cheez hai?',
+        trivia: session?.current?.question
+          ? `Chalo trivia quiz khelte hain! Pehla sawaal (${session.current.category}): "${session.current.question}" Options hain: ${session.current.options.join(', ')}. Batao tumhara jawab kya hai?`
+          : 'Trivia quiz khelte hain! Batao tum ready ho?',
       };
       const openerText = openers[game] || 'Chalo khel shuru karte hain!';
       if (game === 'twentyq') session.currentQuestion = openerText;
@@ -291,6 +305,47 @@ function createGamesModule({ callLLM, synthesize, moodEngine, getPersona, public
         };
       }
 
+      if (session.kind === 'trivia') {
+        if (session.finished) { const e = new Error('game over — start a new round'); e.status = 409; throw e; }
+        const userAns = String(answer || choice || move || '').trim().toLowerCase();
+        const current = session.current;
+        const correctLetter = (current?.correctLetter || '').toLowerCase();
+        const correctAnswer = (current?.correctAnswer || '').toLowerCase();
+        const isCorrect = userAns === correctLetter ||
+          userAns === `option ${correctLetter}` ||
+          (correctAnswer && (userAns === correctAnswer || userAns.includes(correctAnswer) || correctAnswer.includes(userAns)));
+
+        if (isCorrect) session.score.you++;
+        else session.score.her++;
+
+        const finished = session.round >= session.maxRounds;
+        session.finished = finished;
+
+        let nextQ = null;
+        if (!finished) {
+          session.round++;
+          nextQ = await fetchTriviaQuestion();
+          session.current = nextQ.success ? nextQ : null;
+        }
+
+        const reactionPrompt = `Trivia quiz: user guessed "${userAns}". Correct answer was option ${current?.correctLetter?.toUpperCase()}) "${current?.correctAnswer}". User was ${isCorrect ? 'CORRECT' : 'WRONG'}. Score — Daksh: ${session.score.you}, Waguri: ${session.score.her}. ${finished ? 'Game over! Celebrate winner in 1 playful Hinglish sentence.' : `Next question: "${nextQ?.question}". Options: ${nextQ?.options?.join(', ')}`}`;
+        const fallback = isCorrect
+          ? (finished ? `Arre wah, bilkul sahi! Final score tumhara ${session.score.you}! Tum jeet gaye!` : `Sahi jawab! Next question: ${nextQ?.question || ''}`)
+          : (finished ? `Arre re, galat! Sahi answer tha ${current?.correctAnswer}. Final score: ${session.score.you}!` : `Galat jawab tha! Sahi answer tha ${current?.correctAnswer}. Agla sawaal: ${nextQ?.question || ''}`);
+
+        const ban = await banter(reactionPrompt, fallback);
+        return {
+          session_id: sessionId,
+          game: 'trivia',
+          state: publicState(session),
+          correct: isCorrect,
+          correct_answer: current?.correctAnswer,
+          correct_letter: current?.correctLetter,
+          finished,
+          ...(await speakReply({ text: ban.text, taggedEmotion: ban.emotion || (isCorrect ? 'happy' : 'surprised'), sessionId, game: 'trivia' })),
+        };
+      }
+
       // twentyq
       const ans = String(answer || 'maybe').toLowerCase();
       if (!['yes', 'no', 'maybe'].includes(ans)) { const e = new Error('answer must be yes, no or maybe'); e.status = 400; throw e; }
@@ -319,6 +374,17 @@ function publicState(session) {
   }
   if (session.kind === 'rps') {
     return { score: session.score, rounds: session.history.length, last: session.history[session.history.length - 1] || null };
+  }
+  if (session.kind === 'trivia') {
+    return {
+      round: session.round,
+      max_rounds: session.maxRounds,
+      score: session.score,
+      finished: session.finished,
+      question: session.current?.question || null,
+      options: session.current?.options || null,
+      category: session.current?.category || null,
+    };
   }
   return { round: session.round, max_rounds: session.maxRounds, finished: session.finished };
 }

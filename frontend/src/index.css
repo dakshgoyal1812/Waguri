@@ -5581,24 +5581,420 @@ body {
   color: #e2e8f0;
 }
 
-/* Responsive */
+/* ============================================================
+   Phone & Tablet Responsive Layout for Memory Brain Inspector
+   ============================================================ */
 @media (max-width: 640px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+
   .memory-inspector-overlay {
-    padding: 8px;
+    padding: 0;
+    background: #090d16;
+    display: block;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
+
+  .memory-inspector-card {
+    max-width: 100%;
+    min-height: 100%;
+    min-height: 100dvh;
+    border-radius: 0;
+    margin-bottom: 0;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    box-shadow: none;
+  }
+
   .memory-inspector-header {
-    padding: 14px 16px;
+    padding: 12px 14px;
+    gap: 10px;
+    flex-direction: column;
+    align-items: stretch;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: rgba(17, 24, 39, 0.97);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
+
+  .memory-inspector-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .memory-back-btn {
+    padding: 6px 10px;
+    border-radius: 10px;
+    font-size: 0.78rem;
+    min-height: 36px;
+    flex-shrink: 0;
+  }
+
+  .memory-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .memory-brain-badge {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .memory-title {
+    font-size: 0.98rem;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .memory-subtitle {
+    font-size: 0.7rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 200px;
+  }
+
+  .memory-user-badge {
+    max-width: 130px;
+    font-size: 0.68rem;
+    padding: 2px 7px;
+  }
+
+  .memory-inspector-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .memory-add-custom-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    min-height: 38px;
+    border-radius: 10px;
+  }
+
+  .memory-token-pill {
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    min-height: 38px;
+    flex-shrink: 0;
+  }
+
+  .memory-action-btn {
+    padding: 8px 10px;
+    min-height: 38px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .memory-categories-bar {
+    padding: 8px 12px;
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    align-items: center;
+  }
+
+  .memory-categories-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .memory-categories-list {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .memory-category-chip {
+    padding: 5px 11px;
+    font-size: 0.73rem;
+    flex-shrink: 0;
+    min-height: 32px;
+  }
+
+  .memory-sort-btn {
+    padding: 5px 10px;
+    font-size: 0.72rem;
+    flex-shrink: 0;
+    min-height: 32px;
+    white-space: nowrap;
+    margin-left: auto;
+  }
+
   .memory-controls-bar {
-    padding: 12px 16px;
+    padding: 10px 12px;
+    gap: 8px;
     flex-direction: column;
     align-items: stretch;
   }
-  .memory-list-container {
-    padding: 14px 16px;
+
+  .memory-search-wrapper {
+    width: 100%;
+    min-width: 0;
   }
-  .memory-title {
-    font-size: 1.05rem;
+
+  .memory-search-input {
+    font-size: 16px;
+    padding: 9px 36px 9px 38px;
+    border-radius: 10px;
+    height: 42px;
+  }
+
+  .memory-bulk-controls {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+  }
+
+  .memory-select-all-btn,
+  .memory-bulk-delete-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 8px 10px;
+    font-size: 0.76rem;
+    min-height: 36px;
+    border-radius: 10px;
+  }
+
+  .memory-list-container {
+    padding: 12px 10px 32px;
+    flex: 1;
+  }
+
+  .memory-cards-grid {
+    gap: 10px;
+  }
+
+  .memory-item-card {
+    padding: 12px 12px;
+    border-radius: 14px;
+    gap: 8px;
+  }
+
+  .memory-item-meta {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .memory-item-meta-left {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .memory-checkbox-btn {
+    padding: 3px;
+    min-width: 28px;
+    min-height: 28px;
+  }
+
+  .memory-category-badge {
+    font-size: 0.68rem;
+    padding: 2px 6px;
+  }
+
+  .memory-date-tag {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+  }
+
+  .memory-item-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    width: 100%;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 6px;
+    margin-top: 2px;
+  }
+
+  .memory-card-action-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 7px 10px;
+    font-size: 0.76rem;
+    min-height: 34px;
+    border-radius: 8px;
+  }
+
+  .memory-content-text {
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+
+  .memory-edit-textarea {
+    font-size: 16px;
+    padding: 10px;
+    min-height: 90px;
+    border-radius: 10px;
+  }
+
+  .memory-edit-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .memory-edit-buttons {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+
+  .memory-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 9px 12px;
+    font-size: 0.8rem;
+    min-height: 38px;
+    border-radius: 10px;
+  }
+
+  /* Custom memory creation modal on phones (Thumb friendly bottom sheet) */
+  .custom-memory-modal-overlay {
+    padding: 8px;
+    align-items: flex-end;
+  }
+
+  .custom-memory-modal-box {
+    max-width: 100%;
+    max-height: 88vh;
+    max-height: 88dvh;
+    overflow-y: auto;
+    padding: 18px 14px;
+    border-radius: 20px 20px 0 0;
+    gap: 12px;
+  }
+
+  .custom-memory-category-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .custom-category-select-pill {
+    padding: 6px 4px;
+    font-size: 0.7rem;
+  }
+
+  .custom-memory-preset-chips {
+    max-height: 90px;
+    overflow-y: auto;
+    gap: 4px;
+  }
+
+  .custom-preset-btn {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+
+  .custom-memory-textarea {
+    font-size: 16px;
+    padding: 10px;
+    min-height: 80px;
+    border-radius: 10px;
+  }
+
+  /* Admin Token Modal on phones */
+  .memory-token-modal-overlay {
+    padding: 12px;
+  }
+
+  .memory-token-modal-card {
+    max-width: 100%;
+    width: 100%;
+    padding: 18px 14px;
+    border-radius: 16px;
+  }
+
+  .memory-token-input {
+    font-size: 16px;
+    height: 44px;
+  }
+
+  .memory-token-actions {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+
+  .memory-token-actions .memory-btn {
+    flex: 1;
+    justify-content: center;
+    min-height: 40px;
+  }
+}
+
+/* Phone responsive memory lock modal */
+@media (max-width: 480px) {
+  .memory-lock-backdrop {
+    padding: 12px;
+  }
+
+  .memory-lock-modal {
+    padding: 22px 16px 18px;
+    border-radius: 18px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .memory-lock-icon-badge {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    margin-bottom: 12px;
+  }
+
+  .memory-lock-title {
+    font-size: 1.18rem;
+  }
+
+  .memory-lock-subtitle {
+    font-size: 0.78rem;
+    line-height: 1.4;
+    margin: 4px 0 16px;
+  }
+
+  .memory-lock-input {
+    font-size: 16px;
+    height: 46px;
+    padding: 10px 40px 10px 38px;
+  }
+
+  .memory-lock-submit-btn {
+    height: 46px;
+    font-size: 0.88rem;
   }
 }
 
