@@ -49,6 +49,19 @@ export const supabase = isSupabaseConfigured
       },
     };
 
+export const DEFAULT_BYPASS_USER = {
+  id: 'dev-bypass-user',
+  email: 'dakshgoyal1812@gmail.com',
+  user_metadata: {
+    full_name: 'Daksh Goyal',
+    name: 'Daksh Goyal',
+    avatar_url: '/logo.png',
+  },
+  app_metadata: {
+    provider: 'bypass',
+  },
+};
+
 export const ADMIN_EMAILS = [
   'dakshgoyal1812@gmail.com',
 ];

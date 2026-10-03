@@ -30,10 +30,13 @@ import {
   resendVerificationEmail,
   resetPasswordForEmail,
   signOutUser,
+  DEFAULT_BYPASS_USER,
 } from '../supabaseClient.js';
 
+export { DEFAULT_BYPASS_USER };
+
 export default function GoogleAuth({ onUserChange, onLoadingChange, compact = false }) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(DEFAULT_BYPASS_USER);
   const [signingIn, setSigningIn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -108,20 +111,22 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
           if (!allowed) {
             setUnauthorizedUser(session.user);
             setStep('unauthorized');
-            setUser(null);
-            onUserChange?.(null);
+            setUser(DEFAULT_BYPASS_USER);
+            onUserChange?.(DEFAULT_BYPASS_USER);
           } else {
             setUser(session.user);
             onUserChange?.(session.user);
           }
         } else {
-          setUser(null);
-          onUserChange?.(null);
+          setUser(DEFAULT_BYPASS_USER);
+          onUserChange?.(DEFAULT_BYPASS_USER);
         }
         onLoadingChange?.(false);
       })
       .catch((err) => {
         console.warn('[auth] getSession error:', err);
+        setUser(DEFAULT_BYPASS_USER);
+        onUserChange?.(DEFAULT_BYPASS_USER);
         onLoadingChange?.(false);
       });
 
@@ -141,8 +146,8 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
           if (!isConfirmed) {
             setPendingEmail(userEmail || '');
             setStep('verify_otp');
-            setUser(null);
-            onUserChange?.(null);
+            setUser(DEFAULT_BYPASS_USER);
+            onUserChange?.(DEFAULT_BYPASS_USER);
             return;
           }
 
@@ -151,8 +156,8 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
           if (!userEmail || !allowed) {
             setUnauthorizedUser(session.user);
             setStep('unauthorized');
-            setUser(null);
-            onUserChange?.(null);
+            setUser(DEFAULT_BYPASS_USER);
+            onUserChange?.(DEFAULT_BYPASS_USER);
             return;
           }
 
@@ -171,8 +176,8 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
           setSuccessMsg('');
         }
       } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        onUserChange?.(null);
+        setUser(DEFAULT_BYPASS_USER);
+        onUserChange?.(DEFAULT_BYPASS_USER);
       }
     });
 
@@ -468,15 +473,15 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
     }
   };
 
-  // Handler: Sign out
+  // Handler: Sign out / Reset to Bypass
   const handleSignOut = async () => {
     setSigningIn(true);
     try {
       await signOutUser();
-      setUser(null);
+      setUser(DEFAULT_BYPASS_USER);
       setUnauthorizedUser(null);
       setStep('signin');
-      onUserChange?.(null);
+      onUserChange?.(DEFAULT_BYPASS_USER);
       setMenuOpen(false);
     } finally {
       setSigningIn(false);
@@ -491,6 +496,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
 
     const userEmail = user.email || '';
     const isGoogle = user.app_metadata?.provider === 'google' || user.user_metadata?.avatar_url;
+    const isBypass = user.id === DEFAULT_BYPASS_USER.id || user.app_metadata?.provider === 'bypass';
     const name = user.user_metadata?.full_name || user.user_metadata?.name || userEmail.split('@')[0];
     const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture;
 
@@ -519,7 +525,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
             <div className="dropdown-header">
               <div className="dropdown-badge">
                 <ShieldCheck size={14} />
-                <span>{isGoogle ? 'Google Verified' : 'Email Verified'}</span>
+                <span>{isBypass ? 'Admin Access (Bypassed)' : isGoogle ? 'Google Verified' : 'Email Verified'}</span>
               </div>
               <p className="dropdown-name">{name}</p>
               <p className="dropdown-email">{userEmail}</p>
@@ -532,7 +538,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
               disabled={signingIn}
             >
               <LogOut size={15} />
-              <span>Sign Out</span>
+              <span>{isBypass ? 'Reset / Switch Account' : 'Sign Out'}</span>
             </button>
           </div>
         )}

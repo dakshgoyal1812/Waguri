@@ -52,3 +52,16 @@ export function hashEmbed(text, dim = 384) {
   norm = Math.sqrt(norm) || 1;
   return Array.from(vec, (v) => v / norm);
 }
+
+let defaultEmbedder = null;
+
+export function setEmbedder(embedder) {
+  defaultEmbedder = embedder;
+}
+
+export async function embed(text) {
+  if (!defaultEmbedder) {
+    defaultEmbedder = createEmbedder();
+  }
+  return defaultEmbedder.embed(text);
+}
