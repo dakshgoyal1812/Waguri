@@ -59,14 +59,14 @@ export default function MemoryPasswordModal({ isOpen, onClose, onSuccess }) {
   if (!isOpen) return null;
 
   return (
-    <div className="mcp-modal-backdrop" onClick={onClose}>
+    <div className="memory-lock-backdrop" onClick={onClose}>
       <div
         className={`memory-lock-modal ${isShake ? 'shake' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
-          className="mcp-close-btn memory-lock-close"
+          className="memory-lock-close"
           onClick={onClose}
           aria-label="Close password prompt"
         >

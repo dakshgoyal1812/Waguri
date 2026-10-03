@@ -225,18 +225,3 @@ export async function removeAllowedUser(email, adminEmail) {
   return handleResponse(res);
 }
 
-// --- Model Context Protocol (MCP) API ---
-export async function fetchMcpInfo() {
-  const res = await fetch(`${BASE_URL}/api/mcp/info`);
-  return handleResponse(res);
-}
-
-export async function proxyMcpRequest({ url, headers, body }) {
-  const res = await fetch(`${BASE_URL}/api/mcp/proxy`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, headers, body }),
-  });
-  return handleResponse(res);
-}
-
