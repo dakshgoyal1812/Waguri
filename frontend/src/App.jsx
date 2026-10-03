@@ -13,6 +13,7 @@ import AdminPortal from './components/AdminPortal.jsx';
 import AlarmModal from './components/AlarmModal.jsx';
 import MemoryInspector from './components/MemoryInspector.jsx';
 import MemoryPasswordModal from './components/MemoryPasswordModal.jsx';
+import UpdateModal, { checkLatestRelease, CURRENT_APP_VERSION } from './components/UpdateModal.jsx';
 import { isAdminEmail, DEFAULT_BYPASS_USER } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
@@ -100,6 +101,36 @@ export default function App() {
       });
     }
   }, [authUser?.email, pushSubscribed]);
+
+  // In-App Updater: checks GitHub release for newer APK version
+  const [updateData, setUpdateData] = useState(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  const handleCheckUpdate = useCallback(async (silent = false) => {
+    setIsCheckingUpdate(true);
+    try {
+      const data = await checkLatestRelease();
+      if (data?.hasUpdate) {
+        setUpdateData(data);
+        setShowUpdateModal(true);
+      } else if (!silent) {
+        alert(`You are already running the latest version of Waguri (v${CURRENT_APP_VERSION})! ✨`);
+      }
+    } catch (e) {
+      if (!silent) alert('Could not connect to update service. Please check your connection.');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Check for updates silently on app launch
+    const timer = setTimeout(() => {
+      handleCheckUpdate(true);
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [handleCheckUpdate]);
 
   const handleTogglePush = async () => {
     if (pushLoading) return;
@@ -1147,10 +1178,18 @@ export default function App() {
         isOpen={isAdminPortalOpen}
         onClose={() => setIsAdminPortalOpen(false)}
         adminEmail={authUser?.email}
+        onCheckUpdate={() => handleCheckUpdate(false)}
+        isCheckingUpdate={isCheckingUpdate}
         onOpenMemory={() => {
           setIsAdminPortalOpen(false);
           handleOpenMemory();
         }}
+      />
+
+      <UpdateModal
+        isOpen={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+        updateData={updateData}
       />
 
       <AlarmModal
