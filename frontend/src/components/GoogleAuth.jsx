@@ -6,29 +6,22 @@ import {
   User,
   Mail,
   Lock,
-  KeyRound,
   RefreshCw,
   ArrowRight,
   Sparkles,
   AlertCircle,
   Eye,
   EyeOff,
-  Send,
-  HelpCircle,
+  X,
+  Users,
 } from 'lucide-react';
 import {
   supabase,
   isSupabaseConfigured,
-  isEmailAllowed,
   verifyEmailAccess,
   isAdminEmail,
   signInWithGoogle,
   signInWithEmail,
-  signUpWithEmail,
-  signInWithOtp,
-  verifyEmailOtp,
-  resendVerificationEmail,
-  resetPasswordForEmail,
   signOutUser,
   DEFAULT_BYPASS_USER,
 } from '../supabaseClient.js';
@@ -39,22 +32,17 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
   const [user, setUser] = useState(DEFAULT_BYPASS_USER);
   const [signingIn, setSigningIn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const menuRef = useRef(null);
 
-  // Auth Card States
-  // 'signin' | 'signup' | 'otp_login' | 'verify_otp' | 'forgot_password' | 'unauthorized'
-  const [step, setStep] = useState('signin');
+  // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [pendingEmail, setPendingEmail] = useState('');
-  const [otpToken, setOtpToken] = useState('');
-  const [cooldown, setCooldown] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [unauthorizedUser, setUnauthorizedUser] = useState(null);
 
-  // Close menu on click outside
+  // Close user dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
@@ -65,439 +53,410 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Cooldown countdown for resending verification email
+  // Check initial active session (Google OAuth or stored whitelisted Email session)
   useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = setInterval(() => {
-      setCooldown((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [cooldown]);
+    let isMounted = true;
 
-  useEffect(() => {
-    // Check if OAuth or email confirmation returned error in URL hash or search params
-    const hash = window.location.hash || '';
-    const search = window.location.search || '';
-    if (hash.includes('error=') || search.includes('error=')) {
-      const cleanParams = new URLSearchParams(hash.replace(/^#/, '') || search);
-      const desc = cleanParams.get('error_description') || cleanParams.get('error');
-      if (desc) {
-        console.error('[auth] Redirect error:', desc);
-        setErrorMsg(desc.replace(/\+/g, ' '));
-        window.history.replaceState(null, '', window.location.pathname);
-      }
-    }
-
-    // Check initial active session
-    supabase.auth
-      .getSession()
-      .then(async ({ data: { session } }) => {
-        if (session?.user) {
-          const userEmail = session.user.email;
-          const isConfirmed = Boolean(
-            session.user.email_confirmed_at || session.user.confirmed_at
-          );
-
-          if (!isConfirmed) {
-            setPendingEmail(userEmail || '');
-            setStep('verify_otp');
-            setUser(null);
-            onUserChange?.(null);
-            onLoadingChange?.(false);
-            return;
-          }
-
-          const allowed = await verifyEmailAccess(userEmail);
-          if (!allowed) {
-            setUnauthorizedUser(session.user);
-            setStep('unauthorized');
-            setUser(DEFAULT_BYPASS_USER);
-            onUserChange?.(DEFAULT_BYPASS_USER);
-          } else {
+    const restoreSession = async () => {
+      // 1. Check Supabase OAuth session
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.email) {
+          const clean = session.user.email.trim().toLowerCase();
+          const allowed = await verifyEmailAccess(clean);
+          if (allowed && isMounted) {
             setUser(session.user);
             onUserChange?.(session.user);
+            try {
+              localStorage.setItem('waguri_auth_user', JSON.stringify(session.user));
+            } catch {}
+            onLoadingChange?.(false);
+            return;
+          } else {
+            await signOutUser();
+            try { localStorage.removeItem('waguri_auth_user'); } catch {}
           }
-        } else {
-          setUser(DEFAULT_BYPASS_USER);
-          onUserChange?.(DEFAULT_BYPASS_USER);
         }
-        onLoadingChange?.(false);
-      })
-      .catch((err) => {
-        console.warn('[auth] getSession error:', err);
+      } catch (err) {
+        console.warn('[auth] Supabase getSession error:', err?.message);
+      }
+
+      // 2. Check stored whitelisted email session in localStorage
+      try {
+        const raw = localStorage.getItem('waguri_auth_user');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.email) {
+            const clean = parsed.email.trim().toLowerCase();
+            const allowed = await verifyEmailAccess(clean);
+            if (allowed && isMounted) {
+              setUser(parsed);
+              onUserChange?.(parsed);
+              onLoadingChange?.(false);
+              return;
+            } else {
+              localStorage.removeItem('waguri_auth_user');
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[auth] Stored auth session error:', err?.message);
+      }
+
+      // 3. Fallback: DEFAULT_BYPASS_USER (Primary Admin Daksh Goyal)
+      if (isMounted) {
         setUser(DEFAULT_BYPASS_USER);
         onUserChange?.(DEFAULT_BYPASS_USER);
         onLoadingChange?.(false);
-      });
+      }
+    };
 
-    // Supabase Auth listener with email verification & dynamic whitelist validation
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[auth] onAuthStateChange event:', event);
+    restoreSession();
 
+    // Supabase Auth listener for OAuth redirects
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
-        if (session?.user) {
-          const userEmail = session.user.email;
-          const isConfirmed = Boolean(
-            session.user.email_confirmed_at || session.user.confirmed_at
-          );
-
-          if (!isConfirmed) {
-            setPendingEmail(userEmail || '');
-            setStep('verify_otp');
-            setUser(DEFAULT_BYPASS_USER);
-            onUserChange?.(DEFAULT_BYPASS_USER);
-            return;
+        if (session?.user?.email) {
+          const clean = session.user.email.trim().toLowerCase();
+          const allowed = await verifyEmailAccess(clean);
+          if (allowed) {
+            setUser(session.user);
+            onUserChange?.(session.user);
+            try { localStorage.setItem('waguri_auth_user', JSON.stringify(session.user)); } catch {}
+            setErrorMsg('');
+            setSuccessMsg('');
+            setIsAuthModalOpen(false);
+          } else {
+            setErrorMsg(`Access Denied: Google account "${clean}" is not on the admin whitelist.`);
+            await signOutUser();
+            try { localStorage.removeItem('waguri_auth_user'); } catch {}
+            setUser(null);
+            onUserChange?.(null);
+            setIsAuthModalOpen(true);
           }
-
-          const allowed = userEmail ? await verifyEmailAccess(userEmail) : false;
-
-          if (!userEmail || !allowed) {
-            setUnauthorizedUser(session.user);
-            setStep('unauthorized');
-            setUser(DEFAULT_BYPASS_USER);
-            onUserChange?.(DEFAULT_BYPASS_USER);
-            return;
-          }
-
-          // Clean URL hash/search if token was processed
-          if (
-            window.location.hash.includes('access_token') ||
-            window.location.search.includes('code=')
-          ) {
-            window.history.replaceState(null, '', window.location.pathname);
-          }
-
-          console.log('[auth] Logged in successfully:', userEmail);
-          setUser(session.user);
-          onUserChange?.(session.user);
-          setErrorMsg('');
-          setSuccessMsg('');
         }
       } else if (event === 'SIGNED_OUT') {
-        setUser(DEFAULT_BYPASS_USER);
-        onUserChange?.(DEFAULT_BYPASS_USER);
+        const stored = localStorage.getItem('waguri_auth_user');
+        if (!stored) {
+          setUser(null);
+          onUserChange?.(null);
+        }
       }
     });
 
-    // Auto-detect when user returns from confirming email in another tab/window
-    const handleRecheckSession = async () => {
-      if (document.visibilityState === 'visible') {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) {
-            const isConfirmed = Boolean(
-              session.user.email_confirmed_at || session.user.confirmed_at
-            );
-            if (isConfirmed) {
-              const allowed = await verifyEmailAccess(session.user.email);
-              if (allowed) {
-                setUser(session.user);
-                onUserChange?.(session.user);
-                setStep('signin');
-                setErrorMsg('');
-                setSuccessMsg('');
-              }
-            }
-          }
-        } catch {
-          // ignore
-        }
-      }
-    };
-    window.addEventListener('focus', handleRecheckSession);
-    document.addEventListener('visibilitychange', handleRecheckSession);
-    window.addEventListener('storage', handleRecheckSession);
-
     return () => {
+      isMounted = false;
       subscription?.unsubscribe?.();
-      window.removeEventListener('focus', handleRecheckSession);
-      document.removeEventListener('visibilitychange', handleRecheckSession);
-      window.removeEventListener('storage', handleRecheckSession);
     };
   }, [onUserChange, onLoadingChange]);
 
-  // Handler: Email + Password Sign In
-  const handleEmailSignIn = async (e) => {
-    e.preventDefault();
+  // Handler: Email Sign In (Whitelisted Email or Supabase Account)
+  const handleEmailLogin = async (e) => {
+    e?.preventDefault?.();
     setErrorMsg('');
     setSuccessMsg('');
-    const cleanEmail = email.trim();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
       setErrorMsg('Please enter a valid email address.');
       return;
     }
-    if (!password) {
-      setErrorMsg('Please enter your password.');
-      return;
-    }
 
+    setSigningIn(true);
     try {
-      setSigningIn(true);
-      const { data, error } = await signInWithEmail(cleanEmail, password);
-      if (error) {
-        if (
-          error.message.toLowerCase().includes('email not confirmed') ||
-          error.message.toLowerCase().includes('not confirmed')
-        ) {
-          setPendingEmail(cleanEmail);
-          setStep('verify_otp');
-          setErrorMsg(
-            'Your email is not verified yet. Enter the verification code or check your inbox.'
-          );
-          setCooldown(45);
-          return;
+      // If user provided a password, try Supabase password login first
+      if (password && password.trim()) {
+        try {
+          const { data, error } = await signInWithEmail(cleanEmail, password);
+          if (!error && data?.user) {
+            const allowed = await verifyEmailAccess(data.user.email);
+            if (allowed) {
+              setUser(data.user);
+              onUserChange?.(data.user);
+              try { localStorage.setItem('waguri_auth_user', JSON.stringify(data.user)); } catch {}
+              setSuccessMsg(`Welcome, ${data.user.email}!`);
+              setTimeout(() => {
+                setIsAuthModalOpen(false);
+                setSuccessMsg('');
+              }, 600);
+              return;
+            }
+          }
+        } catch (pwdErr) {
+          console.warn('[auth] Supabase password signin skipped/failed:', pwdErr?.message);
         }
-        if (error.message.toLowerCase().includes('invalid login credentials')) {
-          setErrorMsg(
-            'Invalid login credentials. If you originally signed in with Google, click "Sign In with Google" below, or use "Create Account" to set up a new password.'
-          );
-          return;
-        }
-        setErrorMsg(error.message);
-        return;
       }
 
-      if (data?.user) {
-        const isConfirmed = Boolean(
-          data.user.email_confirmed_at || data.user.confirmed_at
+      // Direct Whitelisted Email Sign In (Admin-granted access)
+      const allowed = await verifyEmailAccess(cleanEmail);
+
+      if (!allowed) {
+        setErrorMsg(
+          `Access Denied: "${cleanEmail}" is not on the whitelist. Please ask an admin to add your email in the Admin Portal.`
         );
-        if (!isConfirmed) {
-          setPendingEmail(cleanEmail);
-          setStep('verify_otp');
-          return;
-        }
-
-        const allowed = await verifyEmailAccess(data.user.email);
-        if (!allowed) {
-          setUnauthorizedUser(data.user);
-          setStep('unauthorized');
-          return;
-        }
-
-        setUser(data.user);
-        onUserChange?.(data.user);
-      }
-    } catch (err) {
-      setErrorMsg(err.message || 'Failed to sign in.');
-    } finally {
-      setSigningIn(false);
-    }
-  };
-
-  // Handler: Email + Password Sign Up
-  const handleEmailSignUp = async (e) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
-    const cleanEmail = email.trim();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setErrorMsg('Please enter a valid email address.');
-      return;
-    }
-    if (!password || password.length < 6) {
-      setErrorMsg('Password must be at least 6 characters.');
-      return;
-    }
-
-    try {
-      setSigningIn(true);
-      const { data, error } = await signUpWithEmail(cleanEmail, password);
-      if (error) {
-        setErrorMsg(error.message);
         return;
       }
 
-      // Check if email confirmation is required
-      if (data?.user && !data?.session) {
-        // If user already exists in Supabase, identities array is empty and no email is sent
-        if (data.user.identities && data.user.identities.length === 0) {
-          setErrorMsg(
-            'This email is already registered! Please go to the "Sign In" tab (use "Sign In with Google" if you signed up with Google, or "Forgot password" to set a password).'
-          );
-          return;
-        }
-        setPendingEmail(cleanEmail);
-        setStep('verify_otp');
-        setSuccessMsg(
-          `Verification email sent to ${cleanEmail}! Please check your inbox.`
-        );
-        setCooldown(60);
-      } else if (data?.session) {
-        // Auto-confirmed by Supabase
-        const allowed = await verifyEmailAccess(data.user.email);
-        if (!allowed) {
-          setUnauthorizedUser(data.user);
-          setStep('unauthorized');
-        } else {
-          setUser(data.user);
-          onUserChange?.(data.user);
-        }
-      }
+      // Create verified user session
+      const verifiedUser = {
+        id: `email_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        email: cleanEmail,
+        user_metadata: {
+          full_name: cleanEmail.split('@')[0],
+          name: cleanEmail.split('@')[0],
+          email: cleanEmail,
+        },
+        app_metadata: {
+          provider: 'email',
+          whitelisted: true,
+        },
+        email_confirmed_at: new Date().toISOString(),
+      };
+
+      try {
+        localStorage.setItem('waguri_auth_user', JSON.stringify(verifiedUser));
+      } catch {}
+
+      setUser(verifiedUser);
+      onUserChange?.(verifiedUser);
+      setSuccessMsg(`Access Granted! Welcome to Waguri, ${cleanEmail}.`);
+      setTimeout(() => {
+        setIsAuthModalOpen(false);
+        setSuccessMsg('');
+        setEmail('');
+        setPassword('');
+      }, 700);
     } catch (err) {
-      setErrorMsg(err.message || 'Failed to create account.');
+      console.error('[auth] Email login error:', err);
+      setErrorMsg(err.message || 'Failed to authenticate email.');
     } finally {
       setSigningIn(false);
     }
   };
 
-  // Handler: Magic Link / OTP Email Sign-In (Passwordless)
-  const handleMagicLink = async (e) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
-    const cleanEmail = email.trim();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setErrorMsg('Please enter a valid email address.');
-      return;
-    }
-
-    try {
-      setSigningIn(true);
-      const { error } = await signInWithOtp(cleanEmail);
-      if (error) {
-        setErrorMsg(error.message);
-        return;
-      }
-      setPendingEmail(cleanEmail);
-      setStep('magic_link_sent');
-      setSuccessMsg(
-        `Magic login link sent to ${cleanEmail}! Check your inbox.`
-      );
-      setCooldown(60);
-    } catch (err) {
-      setErrorMsg(err.message || 'Failed to send magic link.');
-    } finally {
-      setSigningIn(false);
-    }
-  };
-
-  // Handler: Verify 6-digit OTP Code in app
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
-    const cleanToken = otpToken.trim();
-    if (!cleanToken) {
-      setErrorMsg('Please enter the verification code.');
-      return;
-    }
-
-    try {
-      setSigningIn(true);
-      const res = await verifyEmailOtp(pendingEmail, cleanToken, 'signup');
-      if (res.error) {
-        setErrorMsg(res.error.message || 'Invalid or expired code. Please try again.');
-        return;
-      }
-
-      const verifiedUser = res.data?.user;
-      if (verifiedUser) {
-        const allowed = await verifyEmailAccess(verifiedUser.email);
-        if (!allowed) {
-          setUnauthorizedUser(verifiedUser);
-          setStep('unauthorized');
-          return;
-        }
-
-        setUser(verifiedUser);
-        onUserChange?.(verifiedUser);
-        setSuccessMsg('Email verified successfully!');
-      }
-    } catch (err) {
-      setErrorMsg(err.message || 'Verification failed. Try clicking the link in your email instead.');
-    } finally {
-      setSigningIn(false);
-    }
-  };
-
-  // Handler: Resend verification email
-  const handleResendVerification = async () => {
-    if (cooldown > 0 || !pendingEmail) return;
-    setErrorMsg('');
-    setSuccessMsg('');
-    try {
-      setSigningIn(true);
-      const { error } = await resendVerificationEmail(pendingEmail);
-      if (error) {
-        setErrorMsg(error.message);
-        return;
-      }
-      setSuccessMsg(`A new verification email has been sent to ${pendingEmail}!`);
-      setCooldown(60);
-    } catch (err) {
-      setErrorMsg(err.message || 'Failed to resend email.');
-    } finally {
-      setSigningIn(false);
-    }
-  };
-
-  // Handler: Forgot password reset link
-  const handleForgotPassword = async (e) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
-    const cleanEmail = email.trim();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setErrorMsg('Please enter your email to receive a password reset link.');
-      return;
-    }
-
-    try {
-      setSigningIn(true);
-      const { error } = await resetPasswordForEmail(cleanEmail);
-      if (error) {
-        setErrorMsg(error.message);
-        return;
-      }
-      setSuccessMsg(`Password reset link sent to ${cleanEmail}!`);
-    } catch (err) {
-      setErrorMsg(err.message || 'Failed to send reset link.');
-    } finally {
-      setSigningIn(false);
-    }
-  };
-
-  // Handler: Google OAuth
+  // Handler: Google OAuth Sign In
   const handleGoogleSignIn = async () => {
     setErrorMsg('');
+    setSuccessMsg('');
     try {
       setSigningIn(true);
       await signInWithGoogle();
     } catch (err) {
-      console.error('Google Sign-In caught error:', err);
-      setErrorMsg('Google Sign-In failed.');
+      console.error('[auth] Google Sign-In caught error:', err);
+      setErrorMsg('Google Sign-In failed. Please try again.');
     } finally {
       setSigningIn(false);
     }
   };
 
-  // Handler: Sign out / Reset to Bypass
+  // Handler: Switch Account
+  const handleSwitchAccount = () => {
+    setMenuOpen(false);
+    setIsAuthModalOpen(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+  };
+
+  // Handler: Sign Out
   const handleSignOut = async () => {
     setSigningIn(true);
     try {
+      try { localStorage.removeItem('waguri_auth_user'); } catch {}
       await signOutUser();
-      setUser(DEFAULT_BYPASS_USER);
-      setUnauthorizedUser(null);
-      setStep('signin');
-      onUserChange?.(DEFAULT_BYPASS_USER);
+      setUser(null);
+      onUserChange?.(null);
       setMenuOpen(false);
+      setIsAuthModalOpen(true);
+      setErrorMsg('');
+      setSuccessMsg('You have been signed out. Please sign in with any authorized email or Google account.');
     } finally {
       setSigningIn(false);
     }
   };
 
-  // ============================================================
-  // Topbar Compact Mode (for logged in user)
-  // ============================================================
+  // Render Auth Modal Dialog
+  const renderAuthModal = () => {
+    if (!isAuthModalOpen) return null;
+
+    return (
+      <div className="auth-modal-backdrop" onClick={() => setIsAuthModalOpen(false)}>
+        <div className="auth-modal-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="auth-modal-close"
+            onClick={() => setIsAuthModalOpen(false)}
+            aria-label="Close sign in dialog"
+          >
+            <X size={18} />
+          </button>
+
+          <div className="auth-modal-header">
+            <div className="auth-modal-badge">
+              <Sparkles size={15} />
+              <span>Full Access Authentication</span>
+            </div>
+            <h3 className="auth-modal-title">Welcome to Waguri ✨</h3>
+            <p className="auth-modal-subtitle">
+              Sign in with your <strong>authorized Email</strong> or <strong>Google Account</strong> to get 100% full access.
+            </p>
+          </div>
+
+          {errorMsg && (
+            <div className="auth-msg-error">
+              <AlertCircle size={15} style={{ display: 'inline', marginRight: '6px', verticalAlign: '-2px' }} />
+              {errorMsg}
+            </div>
+          )}
+          {successMsg && (
+            <div className="auth-msg-success">
+              <CheckCircle2 size={15} style={{ display: 'inline', marginRight: '6px', verticalAlign: '-2px' }} />
+              {successMsg}
+            </div>
+          )}
+
+          {/* Email Sign In Form */}
+          <form onSubmit={handleEmailLogin} className="auth-form">
+            <div className="auth-input-group">
+              <Mail size={16} className="auth-input-icon" />
+              <input
+                type="email"
+                placeholder="Enter authorized email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="auth-input"
+                required
+                autoFocus
+              />
+            </div>
+
+            <div className="auth-input-group">
+              <Lock size={16} className="auth-input-icon" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Password (optional for whitelisted emails)"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="auth-input"
+              />
+              <button
+                type="button"
+                className="auth-input-toggle-pwd"
+                onClick={() => setShowPassword((prev) => !prev)}
+                tabIndex={-1}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              className="auth-primary-btn"
+              disabled={signingIn || !email.trim()}
+            >
+              {signingIn ? (
+                <RefreshCw size={16} className="spin-icon" />
+              ) : (
+                <ArrowRight size={16} />
+              )}
+              <span>{signingIn ? 'Verifying...' : 'Sign In with Email'}</span>
+            </button>
+          </form>
+
+          <div className="auth-or-divider">
+            <span className="auth-or-line" />
+            <span className="auth-or-text">or continue with</span>
+            <span className="auth-or-line" />
+          </div>
+
+          {/* Google Sign In Button */}
+          <div className="auth-google-wrapper">
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={signingIn}
+              className="bg-[linear-gradient(#e9e9e9,#e9e9e9_50%,#fff)] group w-50 h-16 inline-flex transition-all duration-300 overflow-visible p-1 rounded-full group google-signin-btn"
+              title="Sign In with Google"
+              aria-label="Sign In with Google"
+            >
+              <div className="w-half h-full bg-[linear-gradient(to_top,#ececec,#fff)] overflow-hidden shadow-[0_0_1px_rgba(0,0,0,0.07),0_0_1px_rgba(0,0,0,0.05),0_3px_3px_rgba(0,0,0,0.25),0_1px_3px_rgba(0,0,0,0.12)] p-1 rounded-full hover:shadow-none duration-300 google-btn-middle">
+                <div className="w-full h-full text-xl gap-x-0.5 gap-y-0.5 justify-center text-[#101010] bg-[linear-gradient(#f4f4f4,#fefefe)] group-hover:bg-[linear-gradient(#e2e2e2,#fefefe)] duration-200 items-center text-[18px] font-medium gap-4 inline-flex overflow-hidden px-4 py-2 rounded-full black group-hover:text-blue-600 google-btn-inner">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 64 64"
+                    height="28px"
+                    width="24px"
+                    className="google-svg-icon"
+                  >
+                    <g fillRule="evenodd" fill="none" strokeWidth="1" stroke="none">
+                      <g fillRule="nonzero" transform="translate(3.000000, 2.000000)">
+                        <path
+                          fill="#4285F4"
+                          d="M57.8123233,30.1515267 C57.8123233,27.7263183 57.6155321,25.9565533 57.1896408,24.1212666 L29.4960833,24.1212666 L29.4960833,35.0674653 L45.7515771,35.0674653 C45.4239683,37.7877475 43.6542033,41.8844383 39.7213169,44.6372555 L39.6661883,45.0037254 L48.4223791,51.7870338 L49.0290201,51.8475849 C54.6004021,46.7020943 57.8123233,39.1313952 57.8123233,30.1515267"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M29.4960833,58.9921667 C37.4599129,58.9921667 44.1456164,56.3701671 49.0290201,51.8475849 L39.7213169,44.6372555 C37.2305867,46.3742596 33.887622,47.5868638 29.4960833,47.5868638 C21.6960582,47.5868638 15.0758763,42.4415991 12.7159637,35.3297782 L12.3700541,35.3591501 L3.26524241,42.4054492 L3.14617358,42.736447 C7.9965904,52.3717589 17.959737,58.9921667 29.4960833,58.9921667"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M12.7159637,35.3297782 C12.0932812,33.4944915 11.7329116,31.5279353 11.7329116,29.4960833 C11.7329116,27.4640054 12.0932812,25.4976752 12.6832029,23.6623884 L12.6667095,23.2715173 L3.44779955,16.1120237 L3.14617358,16.2554937 C1.14708246,20.2539019 0,24.7439491 0,29.4960833 C0,34.2482175 1.14708246,38.7380388 3.14617358,42.736447 L12.7159637,35.3297782"
+                        />
+                        <path
+                          fill="#EB4335"
+                          d="M29.4960833,11.4050769 C35.0347044,11.4050769 38.7707997,13.7975244 40.9011602,15.7968415 L49.2255853,7.66898166 C44.1130815,2.91684746 37.4599129,0 29.4960833,0 C17.959737,0 7.9965904,6.62018183 3.14617358,16.2554937 L12.6832029,23.6623884 C15.0758763,16.5505675 21.6960582,11.4050769 29.4960833,11.4050769"
+                        />
+                      </g>
+                    </g>
+                  </svg>
+                  <span className="ml-2 font-medium">
+                    {signingIn ? 'Connecting...' : 'Sign In with Google'}
+                  </span>
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <div className="auth-modal-footer">
+            <p className="auth-modal-hint">
+              🛡️ Whitelist access enforced. Need access? Contact <code>dakshgoyal1812@gmail.com</code>.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Compact Mode (Topbar profile pill and dropdown)
   if (compact) {
-    if (!user) return null;
+    if (!user) {
+      return (
+        <div className="google-user-container">
+          <button
+            type="button"
+            className="topbar-signin-btn"
+            onClick={() => {
+              setIsAuthModalOpen(true);
+              setErrorMsg('');
+              setSuccessMsg('');
+            }}
+            title="Sign In with Email or Google"
+            aria-label="Sign in"
+          >
+            <User size={15} />
+            <span>Sign In</span>
+          </button>
+          {renderAuthModal()}
+        </div>
+      );
+    }
 
     const userEmail = user.email || '';
-    const isGoogle = user.app_metadata?.provider === 'google' || user.user_metadata?.avatar_url;
+    const isGoogle = user.app_metadata?.provider === 'google' || Boolean(user.user_metadata?.avatar_url);
     const isBypass = user.id === DEFAULT_BYPASS_USER.id || user.app_metadata?.provider === 'bypass';
-    const name = user.user_metadata?.full_name || user.user_metadata?.name || userEmail.split('@')[0];
+    const isAdmin = isAdminEmail(userEmail);
+    const name = user.user_metadata?.full_name || user.user_metadata?.name || userEmail.split('@')[0] || 'User';
     const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture;
 
     return (
@@ -506,7 +465,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
           type="button"
           className="google-user-pill"
           onClick={() => setMenuOpen((prev) => !prev)}
-          title={`Verified: ${userEmail}`}
+          title={`Active account: ${userEmail}`}
           aria-label="User profile menu"
         >
           {avatarUrl ? (
@@ -525,7 +484,15 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
             <div className="dropdown-header">
               <div className="dropdown-badge">
                 <ShieldCheck size={14} />
-                <span>{isBypass ? 'Admin Access (Bypassed)' : isGoogle ? 'Google Verified' : 'Email Verified'}</span>
+                <span>
+                  {isAdmin
+                    ? 'Admin Access'
+                    : isBypass
+                    ? 'Admin (Bypassed)'
+                    : isGoogle
+                    ? 'Google Verified'
+                    : 'Email Whitelisted'}
+                </span>
               </div>
               <p className="dropdown-name">{name}</p>
               <p className="dropdown-email">{userEmail}</p>
@@ -533,518 +500,42 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
             <div className="dropdown-divider" />
             <button
               type="button"
+              className="dropdown-switch-btn"
+              onClick={handleSwitchAccount}
+              disabled={signingIn}
+            >
+              <Users size={15} />
+              <span>Switch Account / Sign In</span>
+            </button>
+            <button
+              type="button"
               className="dropdown-signout-btn"
               onClick={handleSignOut}
               disabled={signingIn}
             >
               <LogOut size={15} />
-              <span>{isBypass ? 'Reset / Switch Account' : 'Sign Out'}</span>
+              <span>Sign Out</span>
             </button>
           </div>
         )}
+
+        {renderAuthModal()}
       </div>
     );
   }
 
-  // ============================================================
-  // Full Auth Gate Interface
-  // ============================================================
-
-  // State: Unauthorized / Whitelist Gate
-  if (step === 'unauthorized') {
-    const pendingWhitelistedEmail = unauthorizedUser?.email || email || 'your email';
-    return (
-      <div className="auth-step-container">
-        <div className="auth-unauth-badge">
-          <AlertCircle size={28} className="text-amber-500" />
-        </div>
-        <h3 className="auth-card-title">Email Verified ✨</h3>
-        <p className="auth-card-description">
-          Your email <strong>{pendingWhitelistedEmail}</strong> is verified, but Waguri is currently in <strong>private access mode</strong>.
-        </p>
-        <div className="auth-info-box">
-          <p>
-            An administrator must add your email to the whitelist before you can enter.
-          </p>
-          <div className="auth-admin-contact">
-            <span>Primary Admin:</span> <code>dakshgoyal1812@gmail.com</code>
-          </div>
-        </div>
-        <div className="auth-actions-row">
-          <button
-            type="button"
-            className="auth-btn-secondary"
-            onClick={async () => {
-              setSigningIn(true);
-              const allowed = await verifyEmailAccess(pendingWhitelistedEmail);
-              setSigningIn(false);
-              if (allowed) {
-                setUser(unauthorizedUser);
-                onUserChange?.(unauthorizedUser);
-                setStep('signin');
-              } else {
-                setErrorMsg('Your account is still pending approval.');
-              }
-            }}
-            disabled={signingIn}
-          >
-            <RefreshCw size={14} className={signingIn ? 'spin-icon' : ''} />
-            <span>Re-check Whitelist</span>
-          </button>
-          <button
-            type="button"
-            className="auth-btn-outline"
-            onClick={handleSignOut}
-          >
-            <LogOut size={14} />
-            <span>Switch Account</span>
-          </button>
-        </div>
-        {errorMsg && <div className="auth-msg-error">{errorMsg}</div>}
-      </div>
-    );
-  }
-
-  // State: Magic Link Dispatched (Link-only flow)
-  if (step === 'magic_link_sent') {
-    return (
-      <div className="auth-step-container">
-        <div className="auth-envelope-pulse">
-          <Send size={30} className="text-pink-500" />
-        </div>
-        <h3 className="auth-card-title">Magic Link Sent! ✉️</h3>
-        <p className="auth-card-description">
-          We sent a secure 1-click sign-in link to:
-          <br />
-          <strong className="auth-highlight-email">{pendingEmail || email}</strong>
-        </p>
-
-        <div className="auth-waiting-badge">
-          <div className="auth-pulse-dot" />
-          <span>Waiting for you to click the link in your email…</span>
-        </div>
-
-        {errorMsg && <div className="auth-msg-error">{errorMsg}</div>}
-        {successMsg && <div className="auth-msg-success">{successMsg}</div>}
-
-        <div className="auth-verification-footer">
-          <button
-            type="button"
-            className="auth-link-btn"
-            onClick={async () => {
-              if (cooldown > 0) return;
-              try {
-                setSigningIn(true);
-                const { error } = await signInWithOtp(pendingEmail);
-                if (error) setErrorMsg(error.message);
-                else {
-                  setSuccessMsg(`Fresh magic link dispatched to ${pendingEmail}!`);
-                  setCooldown(60);
-                }
-              } catch (err) {
-                setErrorMsg(err.message);
-              } finally {
-                setSigningIn(false);
-              }
-            }}
-            disabled={cooldown > 0 || signingIn}
-          >
-            <RefreshCw size={13} className={signingIn ? 'spin-icon' : ''} />
-            <span>
-              {cooldown > 0 ? `Resend link in ${cooldown}s` : 'Resend magic link'}
-            </span>
-          </button>
-          <span className="auth-dot-sep">•</span>
-          <button
-            type="button"
-            className="auth-link-btn text-muted"
-            onClick={() => {
-              setStep('signin');
-              setErrorMsg('');
-              setSuccessMsg('');
-            }}
-          >
-            ← Back to Sign In
-          </button>
-        </div>
-
-        <p className="auth-spam-hint">
-          💡 If you don't see it within a minute, check your <strong>Spam / Junk</strong> folder.
-        </p>
-      </div>
-    );
-  }
-
-  // State: Email Verification Pending (for New Signups)
-  if (step === 'verify_otp') {
-    return (
-      <div className="auth-step-container">
-        <div className="auth-envelope-pulse">
-          <Mail size={32} className="text-pink-500" />
-        </div>
-        <h3 className="auth-card-title">Check Your Inbox 📬</h3>
-        <p className="auth-card-description">
-          We sent a verification email to:
-          <br />
-          <strong className="auth-highlight-email">{pendingEmail || email}</strong>
-        </p>
-
-        <div className="auth-verify-dual-instructions">
-          <div className="auth-verify-method">
-            <span className="method-num">1</span>
-            <span>Click the <strong>Confirmation Link</strong> in the email.</span>
-          </div>
-          <div className="auth-verify-divider">OR</div>
-          <div className="auth-verify-method">
-            <span className="method-num">2</span>
-            <span>Enter the <strong>6-digit Code</strong> from the email below:</span>
-          </div>
-        </div>
-
-        <form onSubmit={handleVerifyOtp} className="auth-otp-form">
-          <div className="auth-otp-input-wrapper">
-            <KeyRound size={18} className="auth-input-icon" />
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={8}
-              value={otpToken}
-              onChange={(e) => setOtpToken(e.target.value.trim())}
-              placeholder="Enter 6-digit code"
-              className="auth-otp-input"
-              autoFocus
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="auth-primary-btn"
-            disabled={signingIn || !otpToken.trim()}
-          >
-            {signingIn ? (
-              <RefreshCw size={16} className="spin-icon" />
-            ) : (
-              <CheckCircle2 size={16} />
-            )}
-            <span>Verify & Enter Waguri</span>
-          </button>
-        </form>
-
-        {errorMsg && <div className="auth-msg-error">{errorMsg}</div>}
-        {successMsg && <div className="auth-msg-success">{successMsg}</div>}
-
-        <div className="auth-verification-footer">
-          <button
-            type="button"
-            className="auth-link-btn"
-            onClick={handleResendVerification}
-            disabled={cooldown > 0 || signingIn}
-          >
-            <Send size={13} />
-            <span>
-              {cooldown > 0 ? `Resend email in ${cooldown}s` : 'Resend verification email'}
-            </span>
-          </button>
-          <span className="auth-dot-sep">•</span>
-          <button
-            type="button"
-            className="auth-link-btn text-muted"
-            onClick={() => {
-              setStep('signin');
-              setErrorMsg('');
-              setSuccessMsg('');
-            }}
-          >
-            Use different email
-          </button>
-        </div>
-
-        <p className="auth-spam-hint">
-          💡 If you don't see it within a minute, please check your <strong>Spam / Junk</strong> folder.
-        </p>
-      </div>
-    );
-  }
-
-  // State: Forgot Password
-  if (step === 'forgot_password') {
-    return (
-      <div className="auth-step-container">
-        <h3 className="auth-card-title">Reset Password</h3>
-        <p className="auth-card-description">
-          Enter your email and we will send you a password reset link.
-        </p>
-        <form onSubmit={handleForgotPassword} className="auth-form">
-          <div className="auth-input-group">
-            <Mail size={16} className="auth-input-icon" />
-            <input
-              type="email"
-              placeholder="Your email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="auth-input"
-              required
-              autoFocus
-            />
-          </div>
-          <button type="submit" className="auth-primary-btn" disabled={signingIn}>
-            {signingIn ? <RefreshCw size={16} className="spin-icon" /> : <Send size={16} />}
-            <span>Send Reset Link</span>
-          </button>
-        </form>
-        {errorMsg && <div className="auth-msg-error">{errorMsg}</div>}
-        {successMsg && <div className="auth-msg-success">{successMsg}</div>}
-        <button
-          type="button"
-          className="auth-link-btn back-btn"
-          onClick={() => {
-            setStep('signin');
-            setErrorMsg('');
-            setSuccessMsg('');
-          }}
-        >
-          ← Back to Sign In
-        </button>
-      </div>
-    );
-  }
-
-  // ============================================================
-  // Main Login / Sign Up Tabs View
-  // ============================================================
+  // Full Screen / Panel Mode
   return (
-    <div className="auth-interactive-panel">
-      {/* Tabs */}
-      <div className="auth-tabs-header">
-        <button
-          type="button"
-          className={`auth-tab-btn ${step === 'signin' ? 'active' : ''}`}
-          onClick={() => {
-            setStep('signin');
-            setErrorMsg('');
-            setSuccessMsg('');
-          }}
-        >
-          Sign In
-        </button>
-        <button
-          type="button"
-          className={`auth-tab-btn ${step === 'signup' ? 'active' : ''}`}
-          onClick={() => {
-            setStep('signup');
-            setErrorMsg('');
-            setSuccessMsg('');
-          }}
-        >
-          Create Account
-        </button>
-        <button
-          type="button"
-          className={`auth-tab-btn ${step === 'otp_login' ? 'active' : ''}`}
-          onClick={() => {
-            setStep('otp_login');
-            setErrorMsg('');
-            setSuccessMsg('');
-          }}
-        >
-          Magic Link
-        </button>
-      </div>
-
-      {/* Error & Success Messages */}
-      {errorMsg && <div className="auth-msg-error">{errorMsg}</div>}
-      {successMsg && <div className="auth-msg-success">{successMsg}</div>}
-
-      {/* TAB 1: Sign In with Email & Password */}
-      {step === 'signin' && (
-        <form onSubmit={handleEmailSignIn} className="auth-form">
-          <div className="auth-input-group">
-            <Mail size={16} className="auth-input-icon" />
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="auth-input"
-              required
-            />
-          </div>
-
-          <div className="auth-input-group">
-            <Lock size={16} className="auth-input-icon" />
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="auth-input"
-              required
-            />
-            <button
-              type="button"
-              className="auth-input-toggle-pwd"
-              onClick={() => setShowPassword((prev) => !prev)}
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-            </button>
-          </div>
-
-          <div className="auth-forgot-row">
-            <button
-              type="button"
-              className="auth-link-forgot"
-              onClick={() => {
-                setStep('forgot_password');
-                setErrorMsg('');
-                setSuccessMsg('');
-              }}
-            >
-              Forgot password?
-            </button>
-          </div>
-
-          <button type="submit" className="auth-primary-btn" disabled={signingIn}>
-            {signingIn ? <RefreshCw size={16} className="spin-icon" /> : <ArrowRight size={16} />}
-            <span>Sign In</span>
-          </button>
-        </form>
-      )}
-
-      {/* TAB 2: Create Account with Email */}
-      {step === 'signup' && (
-        <form onSubmit={handleEmailSignUp} className="auth-form">
-          <div className="auth-tab-intro">
-            <span>✨ A verification link will be sent to confirm your inbox.</span>
-          </div>
-
-          <div className="auth-input-group">
-            <Mail size={16} className="auth-input-icon" />
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="auth-input"
-              required
-            />
-          </div>
-
-          <div className="auth-input-group">
-            <Lock size={16} className="auth-input-icon" />
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Create password (min 6 characters)"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="auth-input"
-              minLength={6}
-              required
-            />
-            <button
-              type="button"
-              className="auth-input-toggle-pwd"
-              onClick={() => setShowPassword((prev) => !prev)}
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-            </button>
-          </div>
-
-          <button type="submit" className="auth-primary-btn" disabled={signingIn}>
-            {signingIn ? <RefreshCw size={16} className="spin-icon" /> : <Mail size={16} />}
-            <span>Create Account & Verify</span>
-          </button>
-        </form>
-      )}
-
-      {/* TAB 3: Magic Link (Passwordless) */}
-      {step === 'otp_login' && (
-        <form onSubmit={handleMagicLink} className="auth-form">
-          <div className="auth-tab-intro">
-            <span>✉️ Sign in password-free. We'll send a 1-click magic link to your email.</span>
-          </div>
-
-          <div className="auth-input-group">
-            <Mail size={16} className="auth-input-icon" />
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="auth-input"
-              required
-            />
-          </div>
-
-          <button type="submit" className="auth-primary-btn" disabled={signingIn}>
-            {signingIn ? <RefreshCw size={16} className="spin-icon" /> : <Send size={16} />}
-            <span>Send Magic Link</span>
-          </button>
-        </form>
-      )}
-
-      {/* Divider */}
-      <div className="auth-or-divider">
-        <span className="auth-or-line" />
-        <span className="auth-or-text">or continue with</span>
-        <span className="auth-or-line" />
-      </div>
-
-      {/* Google Sign In Button */}
-      <div className="auth-google-wrapper">
-        <button
-          type="button"
-          onClick={handleGoogleSignIn}
-          disabled={signingIn}
-          className="bg-[linear-gradient(#e9e9e9,#e9e9e9_50%,#fff)] group w-50 h-16 inline-flex transition-all duration-300 overflow-visible p-1 rounded-full group google-signin-btn"
-          title="Sign In with Google"
-          aria-label="Sign In with Google"
-        >
-          <div
-            className="w-half h-full bg-[linear-gradient(to_top,#ececec,#fff)] overflow-hidden shadow-[0_0_1px_rgba(0,0,0,0.07),0_0_1px_rgba(0,0,0,0.05),0_3px_3px_rgba(0,0,0,0.25),0_1px_3px_rgba(0,0,0,0.12)] p-1 rounded-full hover:shadow-none duration-300 google-btn-middle"
-          >
-            <div
-              className="w-full h-full text-xl gap-x-0.5 gap-y-0.5 justify-center text-[#101010] bg-[linear-gradient(#f4f4f4,#fefefe)] group-hover:bg-[linear-gradient(#e2e2e2,#fefefe)] duration-200 items-center text-[18px] font-medium gap-4 inline-flex overflow-hidden px-4 py-2 rounded-full black group-hover:text-blue-600 google-btn-inner"
-            >
-              <svg
-                xmlnsXlink="http://www.w3.org/1999/xlink"
-                xmlns="http://www.w3.org/2000/svg"
-                version="1.1"
-                viewBox="0 0 64 64"
-                height="32px"
-                width="24px"
-                className="google-svg-icon"
-              >
-                <g fillRule="evenodd" fill="none" strokeWidth="1" stroke="none">
-                  <g fillRule="nonzero" transform="translate(3.000000, 2.000000)">
-                    <path
-                      fill="#4285F4"
-                      d="M57.8123233,30.1515267 C57.8123233,27.7263183 57.6155321,25.9565533 57.1896408,24.1212666 L29.4960833,24.1212666 L29.4960833,35.0674653 L45.7515771,35.0674653 C45.4239683,37.7877475 43.6542033,41.8844383 39.7213169,44.6372555 L39.6661883,45.0037254 L48.4223791,51.7870338 L49.0290201,51.8475849 C54.6004021,46.7020943 57.8123233,39.1313952 57.8123233,30.1515267"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M29.4960833,58.9921667 C37.4599129,58.9921667 44.1456164,56.3701671 49.0290201,51.8475849 L39.7213169,44.6372555 C37.2305867,46.3742596 33.887622,47.5868638 29.4960833,47.5868638 C21.6960582,47.5868638 15.0758763,42.4415991 12.7159637,35.3297782 L12.3700541,35.3591501 L3.26524241,42.4054492 L3.14617358,42.736447 C7.9965904,52.3717589 17.959737,58.9921667 29.4960833,58.9921667"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M12.7159637,35.3297782 C12.0932812,33.4944915 11.7329116,31.5279353 11.7329116,29.4960833 C11.7329116,27.4640054 12.0932812,25.4976752 12.6832029,23.6623884 L12.6667095,23.2715173 L3.44779955,16.1120237 L3.14617358,16.2554937 C1.14708246,20.2539019 0,24.7439491 0,29.4960833 C0,34.2482175 1.14708246,38.7380388 3.14617358,42.736447 L12.7159637,35.3297782"
-                    />
-                    <path
-                      fill="#EB4335"
-                      d="M29.4960833,11.4050769 C35.0347044,11.4050769 38.7707997,13.7975244 40.9011602,15.7968415 L49.2255853,7.66898166 C44.1130815,2.91684746 37.4599129,0 29.4960833,0 C17.959737,0 7.9965904,6.62018183 3.14617358,16.2554937 L12.6832029,23.6623884 C15.0758763,16.5505675 21.6960582,11.4050769 29.4960833,11.4050769"
-                    />
-                  </g>
-                </g>
-              </svg>
-              <span className="ml-2 font-medium">
-                {signingIn ? 'Connecting...' : 'Sign In with Google'}
-              </span>
-            </div>
-          </div>
-        </button>
-      </div>
+    <div className="auth-step-container">
+      {renderAuthModal()}
+      <button
+        type="button"
+        className="auth-primary-btn"
+        onClick={() => setIsAuthModalOpen(true)}
+      >
+        <User size={16} />
+        <span>Open Sign In Dialog</span>
+      </button>
     </div>
   );
 }
