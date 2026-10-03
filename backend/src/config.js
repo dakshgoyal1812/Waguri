@@ -61,10 +61,11 @@ export const config = {
 
   // Web Push Notifications config
   push: {
-    vapidPublicKey: (process.env.VAPID_PUBLIC_KEY || 'EXPIRED_VAPID_PUBLIC_KEY').trim(),
-    vapidPrivateKey: (process.env.VAPID_PRIVATE_KEY || 'EXPIRED_VAPID_PRIVATE_KEY').trim(),
+    vapidPublicKey: (process.env.VAPID_PUBLIC_KEY || '').trim(),
+    vapidPrivateKey: (process.env.VAPID_PRIVATE_KEY || '').trim(),
     vapidSubject: (() => {
-      const s = (process.env.VAPID_SUBJECT || 'mailto:dakshgoyal1812@gmail.com').trim();
+      const s = (process.env.VAPID_SUBJECT || '').trim();
+      if (!s) return '';
       return (s.startsWith('mailto:') || s.startsWith('https://') || s.startsWith('http://')) ? s : `mailto:${s}`;
     })(),
   },
