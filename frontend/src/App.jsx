@@ -73,7 +73,14 @@ export default function App() {
     } catch {}
     return null;
   });
-  const [authLoading, setAuthLoading] = useState(false);
+
+  const [authLoading, setAuthLoading] = useState(() => {
+    try {
+      return !localStorage.getItem('waguri_auth_user');
+    } catch {
+      return true;
+    }
+  });
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
 
@@ -792,7 +799,62 @@ export default function App() {
     return <PaperBackground />;
   };
 
-  // Full-app Authentication Gate: Bypassed for direct access
+  // Full-app Authentication Gate: Private access only
+  if (authLoading) {
+    return (
+      <div className="auth-gate-container">
+        <div className="bg-layer">
+          {renderBackground()}
+        </div>
+        <div className="ambient-glow" />
+        <div className="auth-gate-card">
+          <div className="auth-gate-avatar">
+            <img src="/logo.png" alt="Waguri Logo" className="auth-gate-logo-img" />
+          </div>
+          <div className="auth-gate-spinner" />
+          <h2 className="auth-gate-title">WAGURI</h2>
+          <p className="auth-gate-subtitle">Verifying your account…</p>
+          {/* Silent listener checking session */}
+          <div style={{ display: 'none' }}>
+            <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return (
+      <div className="auth-gate-container">
+        <div className="bg-layer">
+          {renderBackground()}
+        </div>
+        <div className="ambient-glow" />
+        <div className="auth-gate-card">
+          <div className="auth-gate-header">
+            <div className="auth-gate-avatar">
+              <img src="/logo.png" alt="Waguri Logo" className="auth-gate-logo-img" />
+            </div>
+            <h1 className="auth-gate-title">WAGURI</h1>
+            <span className="auth-gate-badge">
+              <Sparkles size={13} style={{ display: 'inline', marginRight: '4px', verticalAlign: '-1px' }} />
+              AI Companion
+            </span>
+          </div>
+          <p className="auth-gate-subtitle">
+            Sign in with your <strong>Google Account</strong> or <strong>Email</strong> to enter Waguri's world.
+          </p>
+          <div className="auth-gate-btn-wrapper">
+            <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} compact={false} />
+          </div>
+          <div className="auth-gate-footer">
+            <span>🔒 Secure & Private AI Companion</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="stage">
       {/* stage background (sunset / paper / wave / midnight / transparent / custom) */}
