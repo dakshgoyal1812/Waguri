@@ -397,9 +397,11 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
                 <Brain size={20} />
               </div>
               <div>
-                <h1 className="memory-title">Waguri's Memory Inspector</h1>
+                <h1 className="memory-title">Memory Inspector</h1>
                 <p className="memory-subtitle">
-                  RAG pgvector memories • Account: <strong title={currentUserId} className="memory-user-badge"><User size={11} /> {currentUserId}</strong>
+                  <span className="hide-on-mobile">RAG pgvector memories • </span>
+                  <span>Account: </span>
+                  <strong title={currentUserId} className="memory-user-badge"><User size={11} /> {currentUserId}</strong>
                 </p>
               </div>
             </div>
@@ -427,7 +429,7 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
               title="Configure Admin Token"
             >
               <Key size={14} />
-              <span>{token ? 'Token Set' : 'Auth Required'}</span>
+              <span className="hide-on-mobile">{token ? 'Token Set' : 'Auth Required'}</span>
             </button>
 
             <button

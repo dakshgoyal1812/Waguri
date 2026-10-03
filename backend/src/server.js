@@ -28,6 +28,7 @@ import { createPushScheduler } from './push/scheduler.js';
 import { combineProsody } from './tts/avatarVoices.js';
 import { requireAdmin } from './auth/admin.js';
 import memoryRouter, { setMemoryStorage, setMemoryEmbedder } from './routes/memory.js';
+import { fetchWeather, fetchAnime, fetchTriviaQuestion, fetchWikipediaSummary, fetchJoke } from './tools/publicApis.js';
 
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a proxy; request host must survive
@@ -166,6 +167,9 @@ app.get('/api/conversations/latest', async (req, res, next) => {
     const userId = req.query.user_id || 'local-user';
     const conversation = await storage.getLatestConversation?.(userId);
     if (!conversation) return res.json({ conversation: null });
+    if (conversation.user_id && conversation.user_id !== userId) {
+      return res.json({ conversation: null });
+    }
     const history = await storage.getHistory(conversation.id, { page: 1, limit: 50 });
     res.json({ conversation, conversation_id: conversation.id, ...history });
   } catch (e) { next(e); }
@@ -395,8 +399,37 @@ const ADMIN_EMAILS = [
   'dakshgoyal1812@gmail.com',
 ];
 
-app.get('/api/admin/allowed-users', async (_req, res, next) => {
+// Single email verification endpoint - checks ONLY the specific email, prevents leaking other users' emails
+app.get('/api/auth/verify-access', async (req, res, next) => {
   try {
+    const email = (req.query.email || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ error: 'Email parameter required' });
+    }
+    if (ADMIN_EMAILS.includes(email)) {
+      return res.json({ ok: true, allowed: true, isAdmin: true });
+    }
+    const list = await storage.listAllowedUsers();
+    const isAllowed = list.some((u) => {
+      const e = (typeof u === 'string' ? u : u.email).trim().toLowerCase();
+      return e === email;
+    });
+    return res.json({ ok: true, allowed: isAllowed, isAdmin: false });
+  } catch (e) { next(e); }
+});
+
+// Admin-only listing of allowed users - requires admin verification
+app.get('/api/admin/allowed-users', async (req, res, next) => {
+  try {
+    const adminEmail = (req.query.adminEmail || req.get('x-admin-email') || '').trim().toLowerCase();
+    const adminToken = req.get('x-admin-token');
+    const isTokenValid = config.adminToken && adminToken === config.adminToken;
+    const isAdmin = ADMIN_EMAILS.includes(adminEmail) || isTokenValid;
+
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Unauthorized: only primary admins can manage access' });
+    }
+
     const list = await storage.listAllowedUsers();
     res.json({ ok: true, users: list, admin_emails: ADMIN_EMAILS });
   } catch (e) { next(e); }
@@ -521,7 +554,7 @@ app.post('/api/tts/url', async (req, res, next) => {
 app.post('/api/game/start', async (req, res, next) => {
   try {
     const { game, conversation_id } = req.body || {};
-    if (!game) return res.status(400).json({ error: 'game is required (tictactoe | rps | twentyq)' });
+    if (!game) return res.status(400).json({ error: 'game is required (tictactoe | rps | twentyq | trivia)' });
     res.json(await games.start({ game, conversationId: conversation_id }));
   } catch (e) { next(e); }
 });
@@ -539,6 +572,46 @@ app.get('/api/game/state/:sessionId', async (req, res, next) => {
     const s = games.state(req.params.sessionId);
     if (!s) return res.status(404).json({ error: 'game session not found or expired' });
     res.json(s);
+  } catch (e) { next(e); }
+});
+
+// ---- public tools layer: 100% free external enrichments (Weather, Anime, Facts, Trivia, Joke) ----
+app.get('/api/tools/weather', async (req, res, next) => {
+  try {
+    const city = req.query.city || 'Delhi';
+    const data = await fetchWeather(city);
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/tools/anime', async (req, res, next) => {
+  try {
+    const q = req.query.q || 'Naruto';
+    const isRec = req.query.recommend === 'true' || req.query.top === 'true';
+    const data = await fetchAnime(q, isRec);
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/tools/trivia', async (_req, res, next) => {
+  try {
+    const data = await fetchTriviaQuestion();
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/tools/fact', async (req, res, next) => {
+  try {
+    const q = req.query.q || req.query.topic || 'Earth';
+    const data = await fetchWikipediaSummary(q);
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/tools/joke', async (_req, res, next) => {
+  try {
+    const data = await fetchJoke();
+    res.json(data);
   } catch (e) { next(e); }
 });
 

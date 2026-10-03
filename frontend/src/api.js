@@ -201,9 +201,21 @@ export async function checkBackendHealth() {
   }
 }
 
-// Admin access whitelist management
-export async function fetchAllowedUsers() {
-  const res = await fetch(`${BASE_URL}/api/admin/allowed-users`);
+// Verify if an individual email address has access (safe, does not reveal other users)
+export async function checkEmailAccess(email) {
+  const clean = (email || '').trim().toLowerCase();
+  const res = await fetch(`${BASE_URL}/api/auth/verify-access?email=${encodeURIComponent(clean)}`);
+  return handleResponse(res);
+}
+
+// Admin access whitelist management (accessible only by verified admins)
+export async function fetchAllowedUsers(adminEmail) {
+  const query = adminEmail ? `?adminEmail=${encodeURIComponent(adminEmail)}` : '';
+  const res = await fetch(`${BASE_URL}/api/admin/allowed-users${query}`, {
+    headers: {
+      'x-admin-email': adminEmail || '',
+    },
+  });
   return handleResponse(res);
 }
 

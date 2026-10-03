@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { fetchAllowedUsers } from './api.js';
+import { checkEmailAccess } from './api.js';
 
 const supabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ||
@@ -84,16 +84,6 @@ export function isEmailAllowed(email) {
   // Admin emails are unconditionally allowed
   if (isAdminEmail(clean)) return true;
 
-  // Check cached dynamic allowed users from localStorage
-  try {
-    const cached = JSON.parse(localStorage.getItem('waguri_allowed_users') || '[]');
-    if (Array.isArray(cached) && cached.some((e) => (typeof e === 'string' ? e : e.email).trim().toLowerCase() === clean)) {
-      return true;
-    }
-  } catch {
-    // ignore json error
-  }
-
   // Check hardcoded defaults
   return ALLOWED_EMAILS.some((allowed) => allowed.trim().toLowerCase() === clean);
 }
@@ -106,16 +96,12 @@ export async function verifyEmailAccess(email) {
   if (isAdminEmail(clean)) return true;
 
   try {
-    const data = await fetchAllowedUsers();
-    if (data?.users && Array.isArray(data.users)) {
-      const emailList = data.users.map((u) => (typeof u === 'string' ? u : u.email).trim().toLowerCase());
-      try {
-        localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
-      } catch {}
-      return emailList.includes(clean);
+    const data = await checkEmailAccess(clean);
+    if (typeof data?.allowed === 'boolean') {
+      return data.allowed;
     }
   } catch (err) {
-    console.warn('[auth] Dynamic whitelist check offline, using local verification:', err.message);
+    console.warn('[auth] Remote email verification offline, using local verification:', err.message);
   }
 
   return isEmailAllowed(clean);

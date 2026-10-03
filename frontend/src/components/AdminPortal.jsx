@@ -14,18 +14,18 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory 
   const cleanAdminEmail = (adminEmail || '').trim().toLowerCase();
   const isAdmin = ADMIN_EMAILS.some((adm) => adm.toLowerCase() === cleanAdminEmail);
 
-  // Load allowed users whenever modal opens
+  // Load allowed users whenever modal opens (only if admin)
   const loadUsers = async () => {
+    if (!isAdmin) {
+      setStatusMessage({ type: 'error', text: 'Access Denied: Only primary admin accounts can view the allowed users list.' });
+      return;
+    }
     setLoading(true);
     setStatusMessage(null);
     try {
-      const data = await fetchAllowedUsers();
+      const data = await fetchAllowedUsers(cleanAdminEmail);
       if (data?.users) {
         setUsers(data.users);
-        const emailList = data.users.map((u) => (typeof u === 'string' ? u : u.email).toLowerCase());
-        try {
-          localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
-        } catch {}
       }
     } catch (err) {
       console.error('Failed to load allowed users:', err);
@@ -66,10 +66,6 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory 
       const res = await addAllowedUser(clean, cleanAdminEmail);
       if (res?.users) {
         setUsers(res.users);
-        const emailList = res.users.map((u) => (typeof u === 'string' ? u : u.email).toLowerCase());
-        try {
-          localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
-        } catch {}
       }
       setNewEmail('');
       setStatusMessage({
@@ -103,10 +99,6 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory 
       const res = await removeAllowedUser(clean, cleanAdminEmail);
       if (res?.users) {
         setUsers(res.users);
-        const emailList = res.users.map((u) => (typeof u === 'string' ? u : u.email).toLowerCase());
-        try {
-          localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
-        } catch {}
       }
       setStatusMessage({
         type: 'success',

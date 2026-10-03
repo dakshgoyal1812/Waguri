@@ -37,3 +37,10 @@ scratch/
 /*.vrm
 /*.vroid
 
+# Native mobile local files
+**/android/local.properties
+**/android/.gradle/
+**/android/app/build/
+**/ios/App/App.xcodeproj/xcuserdata/
+**/ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+
