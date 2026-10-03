@@ -74,7 +74,7 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory 
       setNewEmail('');
       setStatusMessage({
         type: 'success',
-        text: `Success! ${clean} can now sign in with Google without receiving Access Denied.`,
+        text: `Success! ${clean} can now sign in using direct Email or Google Auth with full access.`,
       });
     } catch (err) {
       setStatusMessage({ type: 'error', text: err.message || 'Failed to add user.' });
@@ -197,15 +197,18 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory 
         {/* Add Email Form */}
         <div className="admin-add-section">
           <label className="admin-section-label" htmlFor="new-user-email">
-            Grant Google Login Access
+            Grant Full Access (Email or Google Login)
           </label>
+          <p className="admin-section-hint" style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '4px 0 10px' }}>
+            Users added here can sign in via <strong>direct Email</strong> or <strong>Google Sign-In</strong> with full access to all Waguri features.
+          </p>
           <form onSubmit={handleAddEmail} className="admin-add-form">
             <div className="admin-input-wrapper">
               <Mail size={16} className="admin-input-icon" />
               <input
                 id="new-user-email"
                 type="email"
-                placeholder="Enter user's Google email (e.g. friend@gmail.com)"
+                placeholder="Enter user's email address (e.g. friend@gmail.com)"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 className="admin-input"
@@ -223,7 +226,7 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory 
               ) : (
                 <UserPlus size={15} />
               )}
-              <span>{submitting ? 'Adding...' : 'Allow Access'}</span>
+              <span>{submitting ? 'Adding...' : 'Grant Access'}</span>
             </button>
           </form>
         </div>
