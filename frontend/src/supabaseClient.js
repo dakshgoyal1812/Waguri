@@ -1,4 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
+import { App as CapApp } from '@capacitor/app';
 import { checkEmailAccess } from './api.js';
 
 const supabaseUrl =
@@ -64,11 +67,20 @@ export const DEFAULT_BYPASS_USER = {
 
 export const ADMIN_EMAILS = [
   'dakshgoyal1812@gmail.com',
+  'dakshgoyal903@gmail.com',
+  'dakshgoyal1234567@gmail.com',
+  'goyaldaksh284@gmail.com',
+  'goelrishika01@gmail.com',
 ];
 
 export const ALLOWED_EMAILS = [
   'dakshgoyal1812@gmail.com',
+  'dakshgoyal903@gmail.com',
+  'dakshgoyal1234567@gmail.com',
   'goyaldaksh284@gmail.com',
+  'goelrishika01@gmail.com',
+  'smartqueue70@gmail.com',
+  'diby9693@gmail.com',
 ];
 
 export function isAdminEmail(email) {
@@ -195,17 +207,83 @@ export async function signInWithGoogle() {
     );
     return;
   }
+
+  const isNative = Capacitor.isNativePlatform();
+
+  if (isNative) {
+    // Native Mobile (Android APK): open external Chrome Custom Tab to bypass WebView 403 disallowed_useragent
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: 'com.waguri.app://auth-callback',
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error) {
+        console.error('Google Sign-In Error:', error);
+        alert(`Google Sign-In failed: ${error.message}`);
+        return;
+      }
+
+      if (data?.url) {
+        await Browser.open({ url: data.url, windowName: '_system' });
+      }
+      return data;
+    } catch (err) {
+      console.error('Native Google Sign-In caught error:', err);
+      alert(`Google Sign-In error: ${err.message}`);
+      return;
+    }
+  }
+
+  // Web Browser: standard OAuth redirect
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: window.location.origin,
     },
   });
+
   if (error) {
     console.error('Google Sign-In Error:', error);
     alert(`Google Sign-In failed: ${error.message}`);
   }
   return data;
+}
+
+// Native Capacitor Deep Link Handler for OAuth Callbacks
+if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+  CapApp.addListener('appUrlOpen', async ({ url }) => {
+    try {
+      await Browser.close();
+    } catch {}
+
+    if (url && (url.includes('code=') || url.includes('access_token='))) {
+      try {
+        const dummyUrl = new URL(url.replace('com.waguri.app://', 'https://localhost/'));
+        const code = dummyUrl.searchParams.get('code');
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
+          return;
+        }
+
+        const hash = dummyUrl.hash.replace(/^#/, '');
+        if (hash) {
+          const hashParams = new URLSearchParams(hash);
+          const access_token = hashParams.get('access_token');
+          const refresh_token = hashParams.get('refresh_token');
+          if (access_token && refresh_token) {
+            await supabase.auth.setSession({ access_token, refresh_token });
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('[auth] appUrlOpen error:', err);
+      }
+    }
+  });
 }
 
 export async function signOutUser() {

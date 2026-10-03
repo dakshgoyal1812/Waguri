@@ -397,6 +397,10 @@ app.post('/api/moods', requireAdmin, async (req, res, next) => {
 // Whitelist access management for Google authentication
 const ADMIN_EMAILS = [
   'dakshgoyal1812@gmail.com',
+  'dakshgoyal903@gmail.com',
+  'dakshgoyal1234567@gmail.com',
+  'goyaldaksh284@gmail.com',
+  'goelrishika01@gmail.com',
 ];
 
 // Single email verification endpoint - checks ONLY the specific email, prevents leaking other users' emails
