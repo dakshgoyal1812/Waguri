@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing, Clock, UserRound } from 'lucide-react';
+import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing, Clock, UserRound, Brain, PlugZap } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
@@ -11,7 +11,10 @@ import SunsetBackground from './components/SunsetBackground.jsx';
 import GoogleAuth from './components/GoogleAuth.jsx';
 import AdminPortal from './components/AdminPortal.jsx';
 import AlarmModal from './components/AlarmModal.jsx';
-import { isAdminEmail } from './supabaseClient.js';
+import MemoryInspector from './components/MemoryInspector.jsx';
+import MCPConnectorModal from './components/MCPConnectorModal.jsx';
+import MemoryPasswordModal from './components/MemoryPasswordModal.jsx';
+import { isAdminEmail, DEFAULT_BYPASS_USER } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 import { BUNDLED_AVATARS, DEFAULT_VRM_URL, getCustomVrmBlob } from './lib/vrmStore.js';
@@ -42,13 +45,26 @@ export default function App() {
   // Empty until the backend answers; the UI renders fine in the meantime.
   const [persona, setPersona] = useState(null);
 
+  const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
+
+  useEffect(() => {
+    const onPopState = () => setCurrentPath(window.location.pathname);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const navigateTo = (path) => {
+    window.history.pushState(null, '', path);
+    setCurrentPath(path);
+  };
+
   const [currentEmotion, setCurrentEmotion] = useState('happy');
   const [isLoading, setIsLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [activeAudioUrl, setActiveAudioUrl] = useState(null);
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
-  const [authUser, setAuthUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authUser, setAuthUser] = useState(DEFAULT_BYPASS_USER);
+  const [authLoading, setAuthLoading] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
 
@@ -131,6 +147,18 @@ export default function App() {
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
   const [isAlarmModalOpen, setIsAlarmModalOpen] = useState(false);
+  const [isMcpModalOpen, setIsMcpModalOpen] = useState(false);
+  const [isMemoryPasswordModalOpen, setIsMemoryPasswordModalOpen] = useState(false);
+
+  const handleOpenMemory = () => {
+    try {
+      if (sessionStorage.getItem('waguri_memory_unlocked') === 'true') {
+        navigateTo('/memory');
+        return;
+      }
+    } catch {}
+    setIsMemoryPasswordModalOpen(true);
+  };
 
   // Active avatar (VRM). The id persists; bundled ids resolve to /public URLs,
   // custom ids to IndexedDB blobs served via object URLs.
@@ -701,59 +729,7 @@ export default function App() {
     return <PaperBackground />;
   };
 
-  // Full-app Authentication Gate: Private access only
-  if (authLoading) {
-    return (
-      <div className="auth-gate-container">
-        <div className="bg-layer">
-          {renderBackground()}
-        </div>
-        <div className="ambient-glow" />
-        <div className="auth-gate-card">
-          <div className="auth-gate-avatar">
-            <img src="/logo.png" alt="Waguri Logo" className="auth-gate-logo-img" />
-          </div>
-          <div className="auth-gate-spinner" />
-          <h2 className="auth-gate-title">WAGURI</h2>
-          <p className="auth-gate-subtitle">Verifying authorization…</p>
-          {/* Silent listener checking session */}
-          <div style={{ display: 'none' }}>
-            <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!authUser) {
-    return (
-      <div className="auth-gate-container">
-        <div className="bg-layer">
-          {renderBackground()}
-        </div>
-        <div className="ambient-glow" />
-        <div className="auth-gate-card">
-          <div className="auth-gate-header">
-            <div className="auth-gate-avatar">
-              <img src="/logo.png" alt="Waguri Logo" className="auth-gate-logo-img" />
-            </div>
-            <h1 className="auth-gate-title">WAGURI</h1>
-            <span className="auth-gate-badge">Private Access</span>
-          </div>
-          <p className="auth-gate-subtitle">
-            Welcome to Waguri! Sign in with your authorized email or Google account to continue.
-          </p>
-          <div className="auth-gate-btn-wrapper">
-            <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} />
-          </div>
-          <div className="auth-gate-footer">
-            <span>🔒 Authorized accounts only</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // Full-app Authentication Gate: Bypassed for direct access
   return (
     <div className="stage">
       {/* stage background (sunset / paper / wave / midnight / transparent / custom) */}
@@ -784,7 +760,17 @@ export default function App() {
           <span className="logo-text">WAGURI</span>
         </div>
         <div className="topbar-actions">
-          <GoogleAuth onUserChange={setAuthUser} compact />
+          <button
+            type="button"
+            className="mcp-topbar-btn"
+            onClick={() => setIsMcpModalOpen(true)}
+            title="Model Context Protocol (MCP) Link & Tools"
+            aria-label="MCP Link & Tools"
+          >
+            <PlugZap size={14} />
+            <span className="mcp-topbar-btn-text">MCP Link</span>
+          </button>
+          <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} compact />
           {isAdminEmail(authUser?.email) && (
             <button
               type="button"
@@ -821,28 +807,30 @@ export default function App() {
         </div>
       </header>
 
-      {/* The avatar herself — full stage */}
-      <AvatarCanvas
-        currentEmotion={currentEmotion}
-        audioElement={audioRef.current}
-        isSpeaking={isSpeaking}
-        chatOpen={chatOpen}
-        vrmUrl={vrmUrl}
-        showRoom={background?.id === 'room'}
-        onTouchReaction={(type) => {
-          if (type === 'headPat') {
-            setCurrentEmotion('relaxed');
-            setTimeout(() => {
-              setCurrentEmotion((prev) => (prev === 'relaxed' ? 'happy' : prev));
-            }, 2500);
-          } else if (type === 'shoulderTap') {
-            setCurrentEmotion('surprised');
-            setTimeout(() => {
-              setCurrentEmotion((prev) => (prev === 'surprised' ? 'happy' : prev));
-            }, 1400);
-          }
-        }}
-      />
+      {/* The avatar herself — full stage (hidden when on /memory to eliminate WebGL composite lag) */}
+      <div style={{ display: currentPath === '/memory' ? 'none' : 'contents' }}>
+        <AvatarCanvas
+          currentEmotion={currentEmotion}
+          audioElement={audioRef.current}
+          isSpeaking={isSpeaking}
+          chatOpen={chatOpen}
+          vrmUrl={vrmUrl}
+          showRoom={background?.id === 'room'}
+          onTouchReaction={(type) => {
+            if (type === 'headPat') {
+              setCurrentEmotion('relaxed');
+              setTimeout(() => {
+                setCurrentEmotion((prev) => (prev === 'relaxed' ? 'happy' : prev));
+              }, 2500);
+            } else if (type === 'shoulderTap') {
+              setCurrentEmotion('surprised');
+              setTimeout(() => {
+                setCurrentEmotion((prev) => (prev === 'surprised' ? 'happy' : prev));
+              }, 1400);
+            }
+          }}
+        />
+      </div>
 
 
 
@@ -987,11 +975,35 @@ export default function App() {
             <span className="social-fab__tooltip">Alerts</span>
           </button>
 
-          {/* 8. Admin Access Portal (only visible to authorized admin accounts) */}
+          {/* 8. Memory Inspector (Brain & RAG vectors - password gated) */}
+          <button
+            className={`social-fab__button memory ${currentPath === '/memory' ? 'active' : ''}`}
+            style={{ '--index': 7 }}
+            onClick={() => handleFabAction(handleOpenMemory)}
+            title="Memory Inspector (Brain & RAG memories)"
+            aria-label="Memory Inspector"
+          >
+            <Brain size={19} />
+            <span className="social-fab__tooltip">Memory</span>
+          </button>
+
+          {/* 9. MCP Tools & Link (Model Context Protocol) */}
+          <button
+            className={`social-fab__button mcp ${isMcpModalOpen ? 'active' : ''}`}
+            style={{ '--index': 8 }}
+            onClick={() => handleFabAction(() => setIsMcpModalOpen(true))}
+            title="MCP Tools & Link (Model Context Protocol)"
+            aria-label="MCP Tools & Link"
+          >
+            <PlugZap size={19} />
+            <span className="social-fab__tooltip">MCP Link</span>
+          </button>
+
+          {/* 10. Admin Access Portal (only visible to authorized admin accounts) */}
           {isAdminEmail(authUser?.email) && (
             <button
               className={`social-fab__button admin ${isAdminPortalOpen ? 'active' : ''}`}
-              style={{ '--index': 7 }}
+              style={{ '--index': 9 }}
               onClick={() => handleFabAction(() => setIsAdminPortalOpen(true))}
               title="Admin Portal (Whitelist & Users)"
               aria-label="Admin Access Portal"
@@ -1032,6 +1044,10 @@ export default function App() {
         isOpen={isAdminPortalOpen}
         onClose={() => setIsAdminPortalOpen(false)}
         adminEmail={authUser?.email}
+        onOpenMemory={() => {
+          setIsAdminPortalOpen(false);
+          handleOpenMemory();
+        }}
       />
 
       <AlarmModal
@@ -1040,6 +1056,50 @@ export default function App() {
         activeVrmId={activeVrmId}
         onPlayAlarmAudio={(url) => playUrl(url)}
       />
+
+      <MCPConnectorModal
+        isOpen={isMcpModalOpen}
+        onClose={() => setIsMcpModalOpen(false)}
+      />
+
+      <MemoryPasswordModal
+        isOpen={isMemoryPasswordModalOpen}
+        onClose={() => setIsMemoryPasswordModalOpen(false)}
+        onSuccess={() => {
+          setIsMemoryPasswordModalOpen(false);
+          navigateTo('/memory');
+        }}
+      />
+
+      {/* RAG Memory Inspector Route: /memory (Passcode protected: Daksh@2009) */}
+      {currentPath === '/memory' && (
+        (() => {
+          let isUnlocked = false;
+          try {
+            isUnlocked = sessionStorage.getItem('waguri_memory_unlocked') === 'true';
+          } catch {}
+
+          if (isUnlocked) {
+            return (
+              <MemoryInspector
+                onBack={() => navigateTo('/')}
+                currentUserId={authUser?.email || 'local-user'}
+              />
+            );
+          }
+
+          return (
+            <MemoryPasswordModal
+              isOpen={true}
+              onClose={() => navigateTo('/')}
+              onSuccess={() => {
+                // Trigger re-render to view MemoryInspector
+                setCurrentPath('/memory');
+              }}
+            />
+          );
+        })()
+      )}
     </div>
   );
 }

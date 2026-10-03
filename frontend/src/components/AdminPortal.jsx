@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, ShieldAlert, UserPlus, Trash2, Mail, CheckCircle2, AlertCircle, RefreshCw, Users, ShieldCheck } from 'lucide-react';
+import { X, ShieldAlert, UserPlus, Trash2, Mail, CheckCircle2, AlertCircle, RefreshCw, Users, ShieldCheck, Brain } from 'lucide-react';
 import { fetchAllowedUsers, addAllowedUser, removeAllowedUser } from '../api.js';
 import { ADMIN_EMAILS } from '../supabaseClient.js';
 
-export default function AdminPortal({ isOpen, onClose, adminEmail }) {
+export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -159,6 +159,38 @@ export default function AdminPortal({ isOpen, onClose, adminEmail }) {
           <div className={`admin-status-banner ${statusMessage.type}`}>
             {statusMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
             <span>{statusMessage.text}</span>
+          </div>
+        )}
+
+        {/* Memory Inspector Quick Access */}
+        {onOpenMemory && (
+          <div style={{ padding: '12px 22px', background: 'rgba(167, 139, 250, 0.08)', borderBottom: '1px solid var(--border-glass)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Brain size={18} style={{ color: '#a78bfa' }} />
+              <div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>RAG Memory Inspector</div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Browse, edit and manage long-term pgvector memories</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenMemory}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #a78bfa, #f472b6)',
+                color: '#ffffff',
+                border: 'none',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <span>Open /memory</span>
+            </button>
           </div>
         )}
 

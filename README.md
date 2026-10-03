@@ -35,6 +35,9 @@ waguri.vrm  VRM 1.0 avatar (served from frontend/public).
 | `GET /api/keypool/status` | key health debug view (needs `x-admin-token`, never public) |
 | `GET /api/health` | keepalive ping target |
 | `GET /api/audio/:id` | TTS audio bytes |
+| `POST /api/mcp` | Model Context Protocol (MCP) JSON-RPC 2.0 server (tools/list, tools/call) |
+| `POST /api/mcp/proxy` | CORS-safe proxy to connect external MCP servers (e.g. Supabase MCP) |
+| `GET /api/mcp/info` | Overview of native MCP tools and endpoints |
 
 ## Run locally
 

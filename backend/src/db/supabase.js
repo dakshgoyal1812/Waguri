@@ -240,6 +240,125 @@ export function createSupabaseStorage(databaseUrl) {
         content_chunk: decryptMessage(r.content_chunk),
       }));
     },
+    async listMemoryVectors({ limit = 30, before, q, userId } = {}) {
+      let query = `
+        select mv.id, mv.conversation_id, mv.content_chunk, mv.created_at
+        from memory_vectors mv
+        join conversations c on mv.conversation_id = c.id
+      `;
+      const params = [];
+      const conditions = [];
+
+      if (userId) {
+        params.push(userId);
+        conditions.push(`c.user_id = $${params.length}`);
+      }
+
+      if (before) {
+        params.push(before);
+        conditions.push(`mv.created_at < $${params.length}`);
+      }
+
+      if (conditions.length > 0) {
+        query += ' where ' + conditions.join(' and ');
+      }
+
+      query += ' order by mv.created_at desc';
+
+      if (!q) {
+        params.push(limit);
+        query += ` limit $${params.length}`;
+        const { rows } = await pool.query(query, params);
+        return rows.map((r) => ({
+          id: r.id,
+          content_chunk: decryptMessage(r.content_chunk),
+          created_at: r.created_at,
+          conversation_id: r.conversation_id,
+        }));
+      }
+
+      // When q is provided, search against decrypted content_chunk
+      const { rows } = await pool.query(query, params);
+      const qLower = String(q).toLowerCase();
+      const matched = [];
+      for (const r of rows) {
+        const text = decryptMessage(r.content_chunk);
+        if (text.toLowerCase().includes(qLower)) {
+          matched.push({
+            id: r.id,
+            content_chunk: text,
+            created_at: r.created_at,
+            conversation_id: r.conversation_id,
+          });
+          if (matched.length >= limit) break;
+        }
+      }
+      return matched;
+    },
+    async getMemoryVector(id) {
+      const { rows } = await pool.query(
+        'select id, conversation_id, content_chunk, created_at from memory_vectors where id = $1',
+        [id]
+      );
+      if (!rows.length) return null;
+      return {
+        id: rows[0].id,
+        content_chunk: decryptMessage(rows[0].content_chunk),
+        created_at: rows[0].created_at,
+        conversation_id: rows[0].conversation_id,
+      };
+    },
+    async updateMemoryVector(id, { content_chunk, embedding }) {
+      const encrypted = encryptMessage(content_chunk);
+      let query = 'update memory_vectors set content_chunk = $1';
+      const params = [encrypted];
+
+      if (embedding && Array.isArray(embedding)) {
+        params.push(`[${embedding.join(',')}]`);
+        query += `, embedding = $${params.length}::vector`;
+      }
+
+      params.push(id);
+      query += ` where id = $${params.length} returning id, created_at, conversation_id`;
+
+      const { rows } = await pool.query(query, params);
+      if (!rows.length) return null;
+      return {
+        id: rows[0].id,
+        content_chunk,
+        created_at: rows[0].created_at,
+        conversation_id: rows[0].conversation_id,
+      };
+    },
+    async deleteMemoryVector(id) {
+      const { rowCount } = await pool.query('delete from memory_vectors where id = $1', [id]);
+      return rowCount > 0;
+    },
+    async bulkDeleteMemoryVectors(ids) {
+      if (!Array.isArray(ids) || !ids.length) return 0;
+      const { rowCount } = await pool.query('delete from memory_vectors where id = any($1::uuid[])', [ids]);
+      return rowCount;
+    },
+    async exportMemoryVectors(userId) {
+      let query = `
+        select mv.id, mv.conversation_id, mv.content_chunk, mv.created_at
+        from memory_vectors mv
+        join conversations c on mv.conversation_id = c.id
+      `;
+      const params = [];
+      if (userId) {
+        params.push(userId);
+        query += ' where c.user_id = $1';
+      }
+      query += ' order by mv.created_at desc';
+      const { rows } = await pool.query(query, params);
+      return rows.map((r) => ({
+        id: r.id,
+        content_chunk: decryptMessage(r.content_chunk),
+        created_at: r.created_at,
+        conversation_id: r.conversation_id,
+      }));
+    },
 
     // ---- api_keys ----
     async listKeys(provider) {

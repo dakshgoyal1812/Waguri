@@ -130,6 +130,7 @@ export function createMemoryStorage() {
     async insertMemoryVector({ conversation_id, content_chunk, embedding }) {
       const encryptedChunk = encryptMessage(content_chunk);
       const row = { id: id(), conversation_id, content_chunk: encryptedChunk, embedding, created_at: now().toISOString() };
+      if (!db.memoryVectors.has(conversation_id)) db.memoryVectors.set(conversation_id, []);
       db.memoryVectors.get(conversation_id).push(row);
       return { id: row.id };
     },
@@ -159,6 +160,110 @@ export function createMemoryStorage() {
         }))
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, k);
+    },
+    async listMemoryVectors({ limit = 30, before, q, userId } = {}) {
+      const all = [];
+      for (const [cid, list] of db.memoryVectors.entries()) {
+        const conv = db.conversations.get(cid);
+        if (userId && (!conv || conv.user_id !== userId)) {
+          continue;
+        }
+        for (const r of list) {
+          all.push(r);
+        }
+      }
+      all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const results = [];
+      const qLower = q ? String(q).toLowerCase() : null;
+      for (const r of all) {
+        if (before && new Date(r.created_at).getTime() >= new Date(before).getTime()) {
+          continue;
+        }
+        const text = decryptMessage(r.content_chunk);
+        if (qLower && !text.toLowerCase().includes(qLower)) {
+          continue;
+        }
+        results.push({
+          id: r.id,
+          content_chunk: text,
+          created_at: r.created_at,
+          conversation_id: r.conversation_id,
+        });
+        if (results.length >= limit) break;
+      }
+      return results;
+    },
+    async getMemoryVector(id) {
+      for (const list of db.memoryVectors.values()) {
+        const found = list.find((r) => r.id === id);
+        if (found) {
+          return {
+            id: found.id,
+            content_chunk: decryptMessage(found.content_chunk),
+            created_at: found.created_at,
+            conversation_id: found.conversation_id,
+          };
+        }
+      }
+      return null;
+    },
+    async updateMemoryVector(id, { content_chunk, embedding }) {
+      for (const list of db.memoryVectors.values()) {
+        const found = list.find((r) => r.id === id);
+        if (found) {
+          found.content_chunk = encryptMessage(content_chunk);
+          if (embedding) found.embedding = embedding;
+          return {
+            id: found.id,
+            content_chunk,
+            created_at: found.created_at,
+            conversation_id: found.conversation_id,
+          };
+        }
+      }
+      return null;
+    },
+    async deleteMemoryVector(id) {
+      for (const list of db.memoryVectors.values()) {
+        const idx = list.findIndex((r) => r.id === id);
+        if (idx !== -1) {
+          list.splice(idx, 1);
+          return true;
+        }
+      }
+      return false;
+    },
+    async bulkDeleteMemoryVectors(ids) {
+      const idSet = new Set(ids);
+      let count = 0;
+      for (const list of db.memoryVectors.values()) {
+        for (let i = list.length - 1; i >= 0; i--) {
+          if (idSet.has(list[i].id)) {
+            list.splice(i, 1);
+            count++;
+          }
+        }
+      }
+      return count;
+    },
+    async exportMemoryVectors(userId) {
+      const all = [];
+      for (const [cid, list] of db.memoryVectors.entries()) {
+        const conv = db.conversations.get(cid);
+        if (userId && (!conv || conv.user_id !== userId)) {
+          continue;
+        }
+        for (const r of list) {
+          all.push({
+            id: r.id,
+            content_chunk: decryptMessage(r.content_chunk),
+            created_at: r.created_at,
+            conversation_id: r.conversation_id,
+          });
+        }
+      }
+      all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      return all;
     },
 
     // ---- api_keys ----

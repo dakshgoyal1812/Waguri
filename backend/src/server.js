@@ -26,6 +26,9 @@ import { storeAudio, getAudio } from './audioCache.js';
 import { createPushService } from './push/index.js';
 import { createPushScheduler } from './push/scheduler.js';
 import { combineProsody } from './tts/avatarVoices.js';
+import { requireAdmin } from './auth/admin.js';
+import memoryRouter, { setMemoryStorage, setMemoryEmbedder } from './routes/memory.js';
+import createMcpRouter from './routes/mcp.js';
 
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a proxy; request host must survive
@@ -66,6 +69,8 @@ if (!defaultPersona) {
 const moodEngine = createMoodEngine(storage);
 const callLLM = createLLMCaller(keyPool);
 const embedder = createEmbedder();
+setMemoryStorage(storage);
+setMemoryEmbedder(embedder);
 const synthesize = createTTSPool(keyPool);
 const orchestrator = createChatOrchestrator({ storage, callLLM, embedder, synthesize, moodEngine });
 
@@ -104,13 +109,6 @@ app.use((req, _res, next) => {
     `${(req.get('x-forwarded-proto') || req.protocol)}://${req.get('host')}`;
   next();
 });
-
-const requireAdmin = (req, res, next) => {
-  // PRD section 10: /api/keypool/status is internal/debug, "don't expose publicly".
-  if (!config.adminToken) return res.status(403).json({ error: 'ADMIN_TOKEN not configured; endpoint disabled' });
-  if (req.get('x-admin-token') !== config.adminToken) return res.status(401).json({ error: 'invalid admin token' });
-  next();
-};
 
 // Health check keepalive endpoints (cron-job.org / Render health check / Uptime monitoring)
 const handleHealth = (_req, res) => {
@@ -178,8 +176,8 @@ app.get('/api/conversations/:id/history', async (req, res, next) => {
   try {
     const conversation = await storage.getConversation(req.params.id);
     if (!conversation) return res.status(404).json({ error: 'conversation not found' });
-    const requestingUserId = req.query.user_id || req.get('x-user-id');
-    if (conversation.user_id && requestingUserId && conversation.user_id !== requestingUserId) {
+    const requestingUserId = req.query.user_id || req.get('x-user-id') || 'local-user';
+    if (conversation.user_id && conversation.user_id !== requestingUserId) {
       return res.status(403).json({ error: 'unauthorized: this conversation belongs to another user' });
     }
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -623,6 +621,13 @@ app.get('/api/audio/:id', (req, res) => {
   res.set('Cache-Control', 'private, max-age=300');
   res.send(entry.buffer);
 });
+
+// Memory Inspector API: browse, search, edit, delete, export memories
+app.use('/api/memory', memoryRouter);
+
+// Model Context Protocol (MCP) API: Native server & external proxy
+const mcpRouter = createMcpRouter({ storage, orchestrator, games, pushScheduler });
+app.use('/api/mcp', mcpRouter);
 
 // 404 for unknown API routes
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not found' }));
