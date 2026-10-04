@@ -62,7 +62,7 @@ export default function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [activeAudioUrl, setActiveAudioUrl] = useState(null);
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
-  const [authUser, setAuthUser] = useState(DEFAULT_BYPASS_USER);
+  const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);

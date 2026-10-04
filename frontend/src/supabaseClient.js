@@ -156,26 +156,28 @@ export async function signInWithOtp(email) {
   });
 }
 
-export async function verifyEmailOtp(email, token, type = 'signup') {
+export async function verifyEmailOtp(email, token, type = 'email') {
   if (!isSupabaseConfigured) {
     throw new Error('Supabase credentials missing: Please verify SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
   }
   const cleanEmail = email.trim();
   const cleanToken = token.trim();
-  // Attempt with specified type first ('signup', 'email', or 'magiclink')
+  // Attempt with specified type first ('email' default for signInWithOtp, then 'magiclink', then 'signup')
   let res = await supabase.auth.verifyOtp({
     email: cleanEmail,
     token: cleanToken,
     type,
   });
-  if (res.error && type === 'signup') {
-    // Fallback: in case Supabase issued the token as an email/magiclink token
-    const fallback = await supabase.auth.verifyOtp({
-      email: cleanEmail,
-      token: cleanToken,
-      type: 'email',
-    });
-    if (!fallback.error) return fallback;
+  if (res.error) {
+    for (const altType of ['email', 'magiclink', 'signup']) {
+      if (altType === type) continue;
+      const fallback = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token: cleanToken,
+        type: altType,
+      });
+      if (!fallback.error) return fallback;
+    }
   }
   return res;
 }
