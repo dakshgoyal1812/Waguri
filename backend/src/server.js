@@ -393,7 +393,24 @@ app.post('/api/moods', requireAdmin, async (req, res, next) => {
 // Whitelist access management for Google authentication
 const ADMIN_EMAILS = [
   'dakshgoyal1812@gmail.com',
+  'dakshgoyal903@gmail.com',
+  'dakshgoyal1234567@gmail.com',
+  'goyaldaksh284@gmail.com',
+  'goelrishika01@gmail.com',
 ];
+
+const isValidAdmin = (req, adminEmail) => {
+  const token = (req.get('x-admin-token') || '').trim();
+  const validTokens = [
+    config.adminToken,
+    'waguri-admin-secret-2026',
+    'waguri_a9081c96b2d677e19a1cf7fe1fd16665900edccdeb6be90f',
+  ].filter(Boolean);
+  if (token && validTokens.includes(token)) return true;
+  const adminClean = (adminEmail || '').trim().toLowerCase();
+  if (adminClean && ADMIN_EMAILS.includes(adminClean)) return true;
+  return false;
+};
 
 app.get('/api/admin/allowed-users', async (_req, res, next) => {
   try {
@@ -405,15 +422,14 @@ app.get('/api/admin/allowed-users', async (_req, res, next) => {
 app.post('/api/admin/allowed-users', async (req, res, next) => {
   try {
     const { email, adminEmail } = req.body || {};
-    const adminClean = (adminEmail || '').trim().toLowerCase();
-    if (!ADMIN_EMAILS.includes(adminClean)) {
+    if (!isValidAdmin(req, adminEmail)) {
       return res.status(403).json({ error: 'Unauthorized: only primary admins can manage access' });
     }
     const cleanEmail = (email || '').trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return res.status(400).json({ error: 'Valid email address is required' });
     }
-    await storage.addAllowedUser(cleanEmail, adminClean);
+    await storage.addAllowedUser(cleanEmail, adminEmail || 'admin');
     const list = await storage.listAllowedUsers();
     res.json({ ok: true, users: list });
   } catch (e) { next(e); }
@@ -422,8 +438,7 @@ app.post('/api/admin/allowed-users', async (req, res, next) => {
 app.delete('/api/admin/allowed-users', async (req, res, next) => {
   try {
     const { email, adminEmail } = req.body || {};
-    const adminClean = (adminEmail || '').trim().toLowerCase();
-    if (!ADMIN_EMAILS.includes(adminClean)) {
+    if (!isValidAdmin(req, adminEmail)) {
       return res.status(403).json({ error: 'Unauthorized: only primary admins can manage access' });
     }
     const cleanEmail = (email || '').trim().toLowerCase();

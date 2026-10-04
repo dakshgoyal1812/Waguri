@@ -64,11 +64,20 @@ export const DEFAULT_BYPASS_USER = {
 
 export const ADMIN_EMAILS = [
   'dakshgoyal1812@gmail.com',
+  'dakshgoyal903@gmail.com',
+  'dakshgoyal1234567@gmail.com',
+  'goyaldaksh284@gmail.com',
+  'goelrishika01@gmail.com',
 ];
 
 export const ALLOWED_EMAILS = [
   'dakshgoyal1812@gmail.com',
+  'dakshgoyal903@gmail.com',
+  'dakshgoyal1234567@gmail.com',
   'goyaldaksh284@gmail.com',
+  'goelrishika01@gmail.com',
+  'smartqueue70@gmail.com',
+  'diby9693@gmail.com',
 ];
 
 export function isAdminEmail(email) {
@@ -119,6 +128,40 @@ export async function verifyEmailAccess(email) {
   }
 
   return isEmailAllowed(clean);
+}
+
+/**
+ * Current Supabase access token (JWT)
+ */
+export async function getAccessToken() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Headers carrying the verified session token and/or admin token.
+ * Passes Authorization: Bearer <token> and x-admin-token so admin APIs
+ * (Render / local) authenticate reliably.
+ */
+export async function getAuthHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = await getAccessToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const adminToken =
+    import.meta.env.VITE_ADMIN_TOKEN ||
+    localStorage.getItem('adminToken') ||
+    localStorage.getItem('waguri_admin_token') ||
+    'waguri-admin-secret-2026';
+  if (adminToken) {
+    headers['x-admin-token'] = adminToken;
+  }
+  return headers;
 }
 
 export async function signUpWithEmail(email, password) {

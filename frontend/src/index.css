@@ -1349,9 +1349,11 @@ body {
   .google-user-name,
   .google-verified-icon,
   .admin-portal-btn-text,
+  .memory-topbar-btn-text,
   .install-pwa-btn-text,
   .push-notif-btn-text { display: none; }
   .admin-portal-topbar-btn,
+  .memory-topbar-btn,
   .install-pwa-btn,
   .push-notif-btn { padding: 8px 9px; }
   .logo {
@@ -2595,6 +2597,29 @@ body {
   border-color: rgba(124, 58, 237, 0.6);
   transform: translateY(-1px);
   box-shadow: 0 4px 14px rgba(124, 58, 237, 0.2);
+}
+
+.memory-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.15), rgba(168, 85, 247, 0.15));
+  border: 1px solid rgba(217, 70, 239, 0.4);
+  color: #c026d3;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(192, 38, 211, 0.1);
+}
+
+.memory-topbar-btn:hover {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(168, 85, 247, 0.25));
+  border-color: rgba(192, 38, 211, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(192, 38, 211, 0.2);
 }
 
 /* Modal overlay */

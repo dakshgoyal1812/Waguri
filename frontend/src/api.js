@@ -11,6 +11,8 @@ export const BASE_URL = (
   (import.meta.env.DEV ? '' : PROD_DEFAULT_BACKEND)
 ).replace(/\/$/, '');
 
+import { getAuthHeaders } from './supabaseClient.js';
+
 async function handleResponse(res) {
   if (!res.ok) {
     let errorMsg = `HTTP ${res.status}`;
@@ -203,23 +205,26 @@ export async function checkBackendHealth() {
 
 // Admin access whitelist management
 export async function fetchAllowedUsers() {
-  const res = await fetch(`${BASE_URL}/api/admin/allowed-users`);
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${BASE_URL}/api/admin/allowed-users`, { headers });
   return handleResponse(res);
 }
 
 export async function addAllowedUser(email, adminEmail) {
+  const headers = await getAuthHeaders({ 'Content-Type': 'application/json' });
   const res = await fetch(`${BASE_URL}/api/admin/allowed-users`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ email, adminEmail }),
   });
   return handleResponse(res);
 }
 
 export async function removeAllowedUser(email, adminEmail) {
+  const headers = await getAuthHeaders({ 'Content-Type': 'application/json' });
   const res = await fetch(`${BASE_URL}/api/admin/allowed-users`, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ email, adminEmail }),
   });
   return handleResponse(res);

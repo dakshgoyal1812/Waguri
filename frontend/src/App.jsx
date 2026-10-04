@@ -771,6 +771,16 @@ export default function App() {
               <span className="admin-portal-btn-text">Admin Portal</span>
             </button>
           )}
+          <button
+            type="button"
+            className="memory-topbar-btn"
+            onClick={handleOpenMemory}
+            title="RAG Memory Inspector (Brain & Memories)"
+            aria-label="Memory Inspector"
+          >
+            <Brain size={15} />
+            <span className="memory-topbar-btn-text">Memory</span>
+          </button>
           {installPrompt && (
             <button
               className="install-pwa-btn"
