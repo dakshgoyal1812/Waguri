@@ -11,6 +11,7 @@ const tests = [
   { name: 'Account Chat Isolation & AES-256-GCM Encryption', file: 'test/test-account-chat-isolation.js' },
   { name: 'PWA Web Push Notifications & Autonomous Scheduler', file: 'test/test-push-notifications.js' },
   { name: 'Memory Inspector: Auth, CRUD, Search, Re-embed & Bulk Operations', file: 'test/memory.test.js' },
+  { name: 'Zero-Key Public APIs (Weather, Anime, Trivia, Jokes, Facts)', file: 'test/test-public-apis.js' },
 ];
 
 console.log('====================================================');
