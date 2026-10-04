@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Waguri</string>
+    <string name="title_activity_main">Waguri</string>
+    <string name="package_name">com.waguri.app</string>
+    <string name="custom_url_scheme">com.waguri.app</string>
+</resources>

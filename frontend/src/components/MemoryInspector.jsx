@@ -29,7 +29,8 @@ import {
   Info,
   Calendar,
 } from 'lucide-react';
-import { BASE_URL } from '../api.js';
+import { BASE_URL } from '../lib/apiBase.js';
+import { getAuthHeaders } from '../supabaseClient.js';
 
 // Predefined categories for customizing memories
 const MEMORY_CATEGORIES = [
@@ -93,22 +94,21 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
   const [newMemoryText, setNewMemoryText] = useState('');
   const [isCreatingMemory, setIsCreatingMemory] = useState(false);
 
-  // Admin token state
-  const [token, setToken] = useState(
-    () => localStorage.getItem('adminToken') || localStorage.getItem('waguri_admin_token') || 'waguri-admin-secret-2026'
-  );
-  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
-  const [tempToken, setTempToken] = useState(token);
-
-  const getHeaders = useCallback(() => ({
+  // Vault auth: every /api/memory call presents (a) the signed-in user's Supabase
+  // JWT and (b) the short-lived vault token minted by the server after the
+  // correct memory password was entered. The old hardcoded ADMIN_TOKEN fallback
+  // leaked full admin access to anyone with the JS bundle and is gone.
+  const getHeaders = useCallback(async () => ({
     'Content-Type': 'application/json',
-    'x-admin-token': token.trim(),
+    ...(await getAuthHeaders()),
+    'x-vault-token': sessionStorage.getItem('waguri_vault_token') || '',
     'x-user-id': currentUserId,
-  }), [token, currentUserId]);
+  }), [currentUserId]);
 
   const load = useCallback(async (before = null) => {
-    if (!token.trim()) {
-      setError('Admin token required. Click "Set Admin Token" to authorize access.');
+    const vaultToken = sessionStorage.getItem('waguri_vault_token');
+    if (!vaultToken) {
+      setError('Vault locked. Please unlock with the memory password first.');
       return;
     }
 
@@ -126,14 +126,18 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
       if (currentUserId) params.set('user_id', currentUserId);
 
       const res = await fetch(`${BASE_URL}/api/memory?${params.toString()}`, {
-        headers: getHeaders(),
+        headers: await getHeaders(),
       });
 
       if (!res.ok) {
         if (res.status === 401) {
-          throw new Error('Not authorised: Invalid admin token. Please configure your ADMIN_TOKEN.');
+          // Vault token expired or missing — clear the session flag so the
+          // password modal opens again on the next attempt.
+          try { sessionStorage.removeItem('waguri_vault_token'); } catch {}
+          try { sessionStorage.removeItem('waguri_memory_unlocked'); } catch {}
+          throw new Error('Vault session expired. Please unlock with the memory password again.');
         } else if (res.status === 403) {
-          throw new Error('Forbidden: ADMIN_TOKEN is not configured on the backend.');
+          throw new Error('Forbidden: this account cannot access the memory vault.');
         } else {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.error || `Could not load memories (HTTP ${res.status})`);
@@ -150,7 +154,7 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [token, q, currentUserId, getHeaders]);
+  }, [q, currentUserId, getHeaders]);
 
   // Debounced search & reload when user or query changes
   useEffect(() => {
@@ -158,18 +162,7 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
       load(null);
     }, 250);
     return () => clearTimeout(t);
-  }, [q, token, currentUserId, load]);
-
-  const handleSaveToken = (e) => {
-    e.preventDefault();
-    const clean = tempToken.trim();
-    localStorage.setItem('adminToken', clean);
-    localStorage.setItem('waguri_admin_token', clean);
-    setToken(clean);
-    setIsTokenModalOpen(false);
-    setSuccessMsg('Admin token saved!');
-    setTimeout(() => setSuccessMsg(''), 3000);
-  };
+  }, [q, currentUserId, load]);
 
   // Create a Custom Memory
   const handleCreateCustomMemory = async (e) => {
@@ -197,7 +190,7 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
     try {
       const res = await fetch(`${BASE_URL}/api/memory`, {
         method: 'POST',
-        headers: getHeaders(),
+        headers: await getHeaders(),
         body: JSON.stringify({
           content_chunk: formattedText,
           user_id: currentUserId,
@@ -239,7 +232,7 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
     try {
       const res = await fetch(`${BASE_URL}/api/memory/${editing.id}`, {
         method: 'PATCH',
-        headers: getHeaders(),
+        headers: await getHeaders(),
         body: JSON.stringify({ content_chunk: clean }),
       });
 
@@ -265,7 +258,7 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
     try {
       const res = await fetch(`${BASE_URL}/api/memory/${id}`, {
         method: 'DELETE',
-        headers: getHeaders(),
+        headers: await getHeaders(),
       });
       if (!res.ok) {
         throw new Error('Could not delete memory');
@@ -293,7 +286,7 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
     try {
       const res = await fetch(`${BASE_URL}/api/memory/bulk-delete`, {
         method: 'POST',
-        headers: getHeaders(),
+        headers: await getHeaders(),
         body: JSON.stringify({ ids }),
       });
       if (!res.ok) {
@@ -332,7 +325,7 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
   const handleExport = async () => {
     try {
       const url = `${BASE_URL}/api/memory/export?user_id=${encodeURIComponent(currentUserId)}`;
-      const res = await fetch(url, { headers: getHeaders() });
+      const res = await fetch(url, { headers: await getHeaders() });
       if (!res.ok) throw new Error('Failed to export memories');
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
@@ -397,9 +390,11 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
                 <Brain size={20} />
               </div>
               <div>
-                <h1 className="memory-title">Waguri's Memory Inspector</h1>
+                <h1 className="memory-title">Memory Inspector</h1>
                 <p className="memory-subtitle">
-                  RAG pgvector memories • Account: <strong title={currentUserId} className="memory-user-badge"><User size={11} /> {currentUserId}</strong>
+                  <span className="hide-on-mobile">RAG pgvector memories • </span>
+                  <span>Account: </span>
+                  <strong title={currentUserId} className="memory-user-badge"><User size={11} /> {currentUserId}</strong>
                 </p>
               </div>
             </div>
@@ -415,19 +410,6 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
             >
               <Plus size={16} />
               <span>Add Memory</span>
-            </button>
-
-            <button
-              type="button"
-              className={`memory-token-pill ${token ? 'configured' : 'missing'}`}
-              onClick={() => {
-                setTempToken(token);
-                setIsTokenModalOpen(true);
-              }}
-              title="Configure Admin Token"
-            >
-              <Key size={14} />
-              <span>{token ? 'Token Set' : 'Auth Required'}</span>
             </button>
 
             <button
@@ -491,15 +473,6 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
             <AlertCircle size={16} />
             <div className="memory-alert-text">
               <span>{error}</span>
-              {!token && (
-                <button
-                  type="button"
-                  className="memory-alert-action-btn"
-                  onClick={() => setIsTokenModalOpen(true)}
-                >
-                  Enter Admin Token
-                </button>
-              )}
             </div>
           </div>
         )}
@@ -858,62 +831,7 @@ export default function MemoryInspector({ onBack, currentUserId = 'local-user' }
         </div>
       )}
 
-      {/* Admin Token Modal */}
-      {isTokenModalOpen && (
-        <div className="memory-token-modal-overlay" onClick={() => setIsTokenModalOpen(false)}>
-          <div className="memory-token-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="memory-token-modal-header">
-              <div className="memory-token-modal-title">
-                <Lock size={18} />
-                <span>Admin Authorization Token</span>
-              </div>
-              <button
-                type="button"
-                className="memory-token-close"
-                onClick={() => setIsTokenModalOpen(false)}
-                aria-label="Close"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <p className="memory-token-desc">
-              Memories are sensitive personal data. Please provide your backend's <code>ADMIN_TOKEN</code> to access this inspector.
-            </p>
-
-            <form onSubmit={handleSaveToken} className="memory-token-form">
-              <div className="memory-token-input-wrap">
-                <Key size={16} className="memory-token-input-icon" />
-                <input
-                  type="password"
-                  value={tempToken}
-                  onChange={(e) => setTempToken(e.target.value)}
-                  placeholder="Enter ADMIN_TOKEN from .env..."
-                  className="memory-token-input"
-                  autoFocus
-                />
-              </div>
-
-              <div className="memory-token-actions">
-                <button
-                  type="button"
-                  className="memory-btn cancel"
-                  onClick={() => setIsTokenModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="memory-btn save"
-                  disabled={!tempToken.trim()}
-                >
-                  Save Token
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Vault re-unlock is handled by the parent MemoryPasswordModal (navigate away & back). */}
     </div>
   );
 }

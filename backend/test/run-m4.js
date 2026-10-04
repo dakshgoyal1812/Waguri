@@ -93,10 +93,10 @@ try {
   }, (l) => l.includes('[waguri-backend] listening'));
   await waitFor(`${BACK}/api/health`);
 
-  // Seed persona
+  // Seed persona (persona writes are admin-only)
   await fetch(`${BACK}/api/persona`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': 'test-admin-token' },
     body: JSON.stringify({ name: 'Waguri' }),
   });
 

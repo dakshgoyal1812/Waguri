@@ -72,7 +72,7 @@ export default function BackgroundPicker({
         <div style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: "url('/room-phone.jpg')",
+          backgroundImage: "url('/room-phone.webp')",
           backgroundPosition: 'center 40%',
           backgroundSize: 'cover',
           display: 'flex',
@@ -194,7 +194,7 @@ export default function BackgroundPicker({
               <div style={{
                 position: 'absolute',
                 inset: 0,
-                backgroundImage: "url('/room-phone.jpg')",
+                backgroundImage: "url('/room-phone.webp')",
                 backgroundPosition: 'center 45%',
                 backgroundSize: 'cover',
               }}>

@@ -25,7 +25,7 @@ try {
 
   // --- persona (PRD section 10: POST /api/persona) ---
   const personaRes = await fetch(`${BACK}/api/persona`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': 'test-admin-token' },
     body: JSON.stringify({
       name: 'Waguri', location: 'Delhi, India',
       backstory: 'Scholarship student in Delhi who loves pastries and visits the bakery of her childhood friend Daksh.',
@@ -38,7 +38,7 @@ try {
 
   // --- chat (PRD section 10: POST /api/chat -> reply text + audio URL) ---
   const chatRes = await fetch(`${BACK}/api/chat`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': 'test-admin-token' },
     body: JSON.stringify({ message: 'Hi Waguri! What did you eat today?' }),
   });
   const chat = await chatRes.json();
@@ -64,7 +64,7 @@ try {
 
   // --- follow-up chat reuses conversation ---
   const chat2Res = await fetch(`${BACK}/api/chat`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': 'test-admin-token' },
     body: JSON.stringify({ conversation_id: chat.conversation_id, message: 'and what about yesterday?' }),
   });
   const chat2 = await chat2Res.json();

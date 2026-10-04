@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Lock, Eye, EyeOff, Brain, KeyRound, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
-
-const CORRECT_PASSWORD = 'Daksh@2009';
+import { getAuthHeaders } from '../supabaseClient.js';
+import { BASE_URL } from '../lib/apiBase.js';
 
 export default function MemoryPasswordModal({ isOpen, onClose, onSuccess }) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isShake, setIsShake] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -31,7 +32,11 @@ export default function MemoryPasswordModal({ isOpen, onClose, onSuccess }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  const handleSubmit = (e) => {
+  // SECURITY: the passcode is verified SERVER-SIDE (constant-time compare +
+  // brute-force rate limiting). Unlocking mints a short-lived vault token the
+  // Memory Inspector presents on every /api/memory call. The old client-side
+  // hardcoded password was readable by anyone in the JS bundle.
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const clean = password.trim();
 
@@ -40,19 +45,35 @@ export default function MemoryPasswordModal({ isOpen, onClose, onSuccess }) {
       return;
     }
 
-    if (clean === CORRECT_PASSWORD) {
-      setError('');
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch(`${BASE_URL}/api/memory/unlock`, {
+        method: 'POST',
+        headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ password: clean }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(res.status === 401 ? (data.error || 'Incorrect password! Access denied.') : (data.error || `Unlock failed (HTTP ${res.status})`));
+        setIsShake(true);
+        setTimeout(() => setIsShake(false), 500);
+        try {
+          if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+        } catch {}
+        return;
+      }
       try {
+        sessionStorage.setItem('waguri_vault_token', data.vault_token);
+        // UI-only convenience flag (skip re-typing the password this session).
+        // The real credential is the server-issued vault token above.
         sessionStorage.setItem('waguri_memory_unlocked', 'true');
       } catch {}
       onSuccess();
-    } else {
-      setError('Incorrect password! Access denied.');
-      setIsShake(true);
-      setTimeout(() => setIsShake(false), 500);
-      try {
-        if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
-      } catch {}
+    } catch (err) {
+      setError(err.message || 'Could not reach the server to verify the password.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -119,15 +140,15 @@ export default function MemoryPasswordModal({ isOpen, onClose, onSuccess }) {
               </div>
             )}
 
-            <button type="submit" className="memory-lock-submit-btn">
-              <span>Unlock Memory Inspector</span>
+            <button type="submit" className="memory-lock-submit-btn" disabled={isSubmitting}>
+              <span>{isSubmitting ? 'Verifying...' : 'Unlock Memory Inspector'}</span>
               <ArrowRight size={16} />
             </button>
           </form>
 
           <div className="memory-lock-footer-hint">
             <ShieldCheck size={14} className="text-emerald" />
-            <span>Protected by AES-256 RAG Encryption</span>
+            <span>Protected by server-side verification & AES-256 RAG encryption</span>
           </div>
         </div>
       </div>

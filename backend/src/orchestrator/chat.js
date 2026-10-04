@@ -11,6 +11,7 @@ import { storeAudio } from '../audioCache.js';
 import { waguriPersona } from '../personaSeed.js';
 import { needsLanguageRepair, languageRepairNudge } from '../lang/guard.js';
 import { combineProsody } from '../tts/avatarVoices.js';
+import { getEnrichedContext } from '../tools/publicApis.js';
 
 // Language self-heal: free-tier models in the failover pool violate the Hinglish
 // contract at different rates. When a reply comes back in the wrong language,
@@ -46,7 +47,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
   }
 
   // Shared tail of every reply: mood resolution + persistence + TTS + response shape.
-  async function finishReply({ persona, conversationId, reply, taggedEmotion, userMessageId, llmResult, memoriesCount, exchangeText, userText, languageRepaired, avatarId }) {
+  async function finishReply({ persona, conversationId, reply, taggedEmotion, userMessageId, llmResult, memoriesCount, exchangeText, userText, languageRepaired, avatarId, toolUsed }) {
     const mood = moodEngine ? await moodEngine.detect(reply, taggedEmotion, persona, userText) : null;
     const expression = moodEngine ? moodEngine.expressionFor(mood, taggedEmotion) : (taggedEmotion || 'neutral');
 
@@ -94,6 +95,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
         llm: llmResult ? { provider: llmResult.provider, model: llmResult.model, latency_ms: llmResult.latencyMs } : null,
         memories_used: memoriesCount || 0,
         language_repaired: !!languageRepaired,
+        tool_used: toolUsed || null,
       },
     };
     if (conversationId) out.conversation_id = conversationId;
@@ -141,9 +143,21 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
       console.error('[rag] retrieval failed, continuing without memories:', e.message);
     }
 
+    // Check if user query matches any real-time public API tools (Weather, Anime, Facts, Trivia, Joke)
+    let toolContext = null;
+    try {
+      toolContext = await getEnrichedContext(message, persona);
+    } catch (e) {
+      console.error('[tools] enrichment failed, continuing without tool:', e.message);
+    }
+
     // steps 4-5: inject chunks + last N raw messages, call LLM through the pool.
     // characters.base_temperature (Supabase) drives sampling; null = provider default.
-    const systemPrompt = buildSystemPrompt(persona, memories);
+    let systemPrompt = buildSystemPrompt(persona, memories);
+    if (toolContext?.contextText) {
+      systemPrompt += `\n\n## Real-Time Live Data (${toolContext.type.toUpperCase()})\n${toolContext.contextText}`;
+    }
+
     const llmMessages = buildMessages({ systemPrompt, recentMessages: recent, userMessage: message });
     const llmOptions = persona.base_temperature != null ? { temperature: persona.base_temperature } : {};
     const llmResult = await callLLM(llmMessages, llmOptions);
@@ -162,6 +176,7 @@ export function createChatOrchestrator({ storage, callLLM, embedder, synthesize,
       userText: message,
       languageRepaired: repaired,
       avatarId,
+      toolUsed: toolContext ? { type: toolContext.type, summary: toolContext.summary } : null,
     });
   }
 

@@ -13,11 +13,13 @@ import AdminPortal from './components/AdminPortal.jsx';
 import AlarmModal from './components/AlarmModal.jsx';
 import MemoryInspector from './components/MemoryInspector.jsx';
 import MemoryPasswordModal from './components/MemoryPasswordModal.jsx';
-import { isAdminEmail, DEFAULT_BYPASS_USER } from './supabaseClient.js';
+import UpdateModal, { checkLatestRelease, CURRENT_APP_VERSION } from './components/UpdateModal.jsx';
+import { isAdminEmail } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 import { BUNDLED_AVATARS, DEFAULT_VRM_URL, getCustomVrmBlob } from './lib/vrmStore.js';
 import { isPushSupported, getExistingSubscription, subscribeToPush, unsubscribeFromPush, sendTestNotification, showLocalNotification } from './lib/pushClient.js';
+import { initCapacitor, triggerHaptic } from './lib/capacitor.js';
 
 // Natural emotion cycle pool for automatic, subtle idle expression transitions
 const IDLE_EMOTION_POOL = ['relaxed', 'happy', 'neutral', 'curious', 'relaxed', 'happy'];
@@ -62,8 +64,11 @@ export default function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [activeAudioUrl, setActiveAudioUrl] = useState(null);
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
-  const [authUser, setAuthUser] = useState(DEFAULT_BYPASS_USER);
-  const [authLoading, setAuthLoading] = useState(false);
+  // Auth state starts from scratch on every load: the ONLY trusted session is
+  // the Supabase auth session, resolved by the hidden GoogleAuth below. The old
+  // localStorage-backed initial state was forgeable (security bypass).
+  const [authUser, setAuthUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
 
@@ -83,6 +88,36 @@ export default function App() {
       });
     }
   }, [authUser?.email, pushSubscribed]);
+
+  // In-App Updater: checks GitHub release for newer APK version
+  const [updateData, setUpdateData] = useState(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  const handleCheckUpdate = useCallback(async (silent = false) => {
+    setIsCheckingUpdate(true);
+    try {
+      const data = await checkLatestRelease();
+      if (data?.hasUpdate) {
+        setUpdateData(data);
+        setShowUpdateModal(true);
+      } else if (!silent) {
+        alert(`You are already running the latest version of Waguri (v${CURRENT_APP_VERSION})! ✨`);
+      }
+    } catch (e) {
+      if (!silent) alert('Could not connect to update service. Please check your connection.');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Check for updates silently on app launch
+    const timer = setTimeout(() => {
+      handleCheckUpdate(true);
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [handleCheckUpdate]);
 
   const handleTogglePush = async () => {
     if (pushLoading) return;
@@ -157,6 +192,44 @@ export default function App() {
     } catch {}
     setIsMemoryPasswordModalOpen(true);
   };
+
+  // Android & iOS native integration: hardware back button & status bar
+  const backHandlerRef = useRef();
+  backHandlerRef.current = () => {
+    if (currentPath === '/memory') {
+      navigateTo('/');
+      return true;
+    }
+    if (isMemoryPasswordModalOpen) {
+      setIsMemoryPasswordModalOpen(false);
+      return true;
+    }
+    if (isAlarmModalOpen) {
+      setIsAlarmModalOpen(false);
+      return true;
+    }
+    if (isAdminPortalOpen) {
+      setIsAdminPortalOpen(false);
+      return true;
+    }
+    if (isWallpaperPickerOpen) {
+      setIsWallpaperPickerOpen(false);
+      return true;
+    }
+    if (isAvatarPickerOpen) {
+      setIsAvatarPickerOpen(false);
+      return true;
+    }
+    if (chatOpen) {
+      setChatOpen(false);
+      return true;
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    initCapacitor(() => backHandlerRef.current?.());
+  }, []);
 
   // Active avatar (VRM). The id persists; bundled ids resolve to /public URLs,
   // custom ids to IndexedDB blobs served via object URLs.
@@ -375,6 +448,7 @@ export default function App() {
     if (dialDragRef.current.hasDragged || isDialDragging || isDialRolling) {
       return;
     }
+    triggerHaptic();
     fn();
     setFabOpen(false);
   };
@@ -478,14 +552,17 @@ export default function App() {
   };
 
   // Persona is fetched from the backend (Supabase `personas` table in prod).
+  // Re-fetches when authUser changes: the endpoint now requires a session, and
+  // the first fetch happens before login completes.
   useEffect(() => {
+    if (!authUser?.email) return;
     getPersona()
       .then((p) => { if (p && p.name) setPersona(p); })
       .catch((err) => {
         console.warn('Could not fetch persona from server:', err.message);
-        setPersona({ name: 'Waguri', personality_traits: [] });
+        setPersona((prev) => prev || { name: 'Waguri', personality_traits: [] });
       });
-  }, []);
+  }, [authUser?.email]);
 
   // Persist conversationId in user-scoped localStorage
   useEffect(() => {
@@ -499,7 +576,14 @@ export default function App() {
   // When authUser changes (login, logout, account switch), immediately reset messages
   // and load only the target user's conversation.
   useEffect(() => {
-    const uid = authUser?.email || 'local-user';
+    // If not logged in, reset to clean welcome message and do NOT load anyone else's conversation
+    if (!authUser?.email) {
+      setMessages([WELCOME_MESSAGE]);
+      setConversationId(null);
+      return;
+    }
+
+    const uid = authUser.email;
     const storedId = localStorage.getItem(getStorageKey(uid));
 
     // Reset message state immediately to prevent any cross-account visual leak
@@ -633,11 +717,20 @@ export default function App() {
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
+    const guestId = (() => {
+      let g = localStorage.getItem('waguri_guest_device_id');
+      if (!g) {
+        g = 'guest_' + Math.random().toString(36).slice(2, 10);
+        try { localStorage.setItem('waguri_guest_device_id', g); } catch {}
+      }
+      return g;
+    })();
+
     try {
       const res = await callWithStaleRecovery(sendMessage, {
         conversationId,
         personaId: persona?.id,
-        userId: authUser?.email || 'local-user',
+        userId: authUser?.email || guestId,
         message: userText,
         avatarId: activeVrmId,
       });
@@ -727,7 +820,62 @@ export default function App() {
     return <PaperBackground />;
   };
 
-  // Full-app Authentication Gate: Bypassed for direct access
+  // Full-app Authentication Gate: Private access only
+  if (authLoading) {
+    return (
+      <div className="auth-gate-container">
+        <div className="bg-layer">
+          {renderBackground()}
+        </div>
+        <div className="ambient-glow" />
+        <div className="auth-gate-card">
+          <div className="auth-gate-avatar">
+            <img src="/logo.webp" alt="Waguri Logo" className="auth-gate-logo-img" />
+          </div>
+          <div className="auth-gate-spinner" />
+          <h2 className="auth-gate-title">WAGURI</h2>
+          <p className="auth-gate-subtitle">Verifying your account…</p>
+          {/* Silent listener checking session */}
+          <div style={{ display: 'none' }}>
+            <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return (
+      <div className="auth-gate-container">
+        <div className="bg-layer">
+          {renderBackground()}
+        </div>
+        <div className="ambient-glow" />
+        <div className="auth-gate-card">
+          <div className="auth-gate-header">
+            <div className="auth-gate-avatar">
+              <img src="/logo.webp" alt="Waguri Logo" className="auth-gate-logo-img" />
+            </div>
+            <h1 className="auth-gate-title">WAGURI</h1>
+            <span className="auth-gate-badge">
+              <Sparkles size={13} style={{ display: 'inline', marginRight: '4px', verticalAlign: '-1px' }} />
+              AI Companion
+            </span>
+          </div>
+          <p className="auth-gate-subtitle">
+            Sign in with your <strong>Google Account</strong> or <strong>Email</strong> to enter Waguri's world.
+          </p>
+          <div className="auth-gate-btn-wrapper">
+            <GoogleAuth onUserChange={setAuthUser} onLoadingChange={setAuthLoading} compact={false} />
+          </div>
+          <div className="auth-gate-footer">
+            <span>🔒 Secure & Private AI Companion</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="stage">
       {/* stage background (sunset / paper / wave / midnight / transparent / custom) */}
@@ -753,7 +901,7 @@ export default function App() {
       <header className="topbar">
         <div className="logo">
           <div className="logo-avatar">
-            <img src="/logo.png" alt="Waguri Logo" className="logo-img" />
+            <img src="/logo.webp" alt="Waguri Logo" className="logo-img" />
           </div>
           <span className="logo-text">WAGURI</span>
         </div>
@@ -1020,10 +1168,18 @@ export default function App() {
         isOpen={isAdminPortalOpen}
         onClose={() => setIsAdminPortalOpen(false)}
         adminEmail={authUser?.email}
+        onCheckUpdate={() => handleCheckUpdate(false)}
+        isCheckingUpdate={isCheckingUpdate}
         onOpenMemory={() => {
           setIsAdminPortalOpen(false);
           handleOpenMemory();
         }}
+      />
+
+      <UpdateModal
+        isOpen={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+        updateData={updateData}
       />
 
       <AlarmModal

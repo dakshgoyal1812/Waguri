@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, ShieldAlert, UserPlus, Trash2, Mail, CheckCircle2, AlertCircle, RefreshCw, Users, ShieldCheck, Brain } from 'lucide-react';
+import { X, ShieldAlert, UserPlus, Trash2, Mail, CheckCircle2, AlertCircle, RefreshCw, Users, ShieldCheck, Brain, Sparkles } from 'lucide-react';
 import { fetchAllowedUsers, addAllowedUser, removeAllowedUser } from '../api.js';
 import { ADMIN_EMAILS } from '../supabaseClient.js';
+import { CURRENT_APP_VERSION } from './UpdateModal.jsx';
 
-export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory }) {
+export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory, onCheckUpdate, isCheckingUpdate }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -14,18 +15,18 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory 
   const cleanAdminEmail = (adminEmail || '').trim().toLowerCase();
   const isAdmin = ADMIN_EMAILS.some((adm) => adm.toLowerCase() === cleanAdminEmail);
 
-  // Load allowed users whenever modal opens
+  // Load allowed users whenever modal opens (only if admin)
   const loadUsers = async () => {
+    if (!isAdmin) {
+      setStatusMessage({ type: 'error', text: 'Access Denied: Only primary admin accounts can view the allowed users list.' });
+      return;
+    }
     setLoading(true);
     setStatusMessage(null);
     try {
       const data = await fetchAllowedUsers();
       if (data?.users) {
         setUsers(data.users);
-        const emailList = data.users.map((u) => (typeof u === 'string' ? u : u.email).toLowerCase());
-        try {
-          localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
-        } catch {}
       }
     } catch (err) {
       console.error('Failed to load allowed users:', err);
@@ -63,13 +64,9 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory 
     setSubmitting(true);
     setStatusMessage(null);
     try {
-      const res = await addAllowedUser(clean, cleanAdminEmail);
+      const res = await addAllowedUser(clean);
       if (res?.users) {
         setUsers(res.users);
-        const emailList = res.users.map((u) => (typeof u === 'string' ? u : u.email).toLowerCase());
-        try {
-          localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
-        } catch {}
       }
       setNewEmail('');
       setStatusMessage({
@@ -100,13 +97,9 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory 
     setLoading(true);
     setStatusMessage(null);
     try {
-      const res = await removeAllowedUser(clean, cleanAdminEmail);
+      const res = await removeAllowedUser(clean);
       if (res?.users) {
         setUsers(res.users);
-        const emailList = res.users.map((u) => (typeof u === 'string' ? u : u.email).toLowerCase());
-        try {
-          localStorage.setItem('waguri_allowed_users', JSON.stringify(emailList));
-        } catch {}
       }
       setStatusMessage({
         type: 'success',
@@ -190,6 +183,40 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory 
               }}
             >
               <span>Open /memory</span>
+            </button>
+          </div>
+        )}
+
+        {/* App Version & In-App Update Checker */}
+        {onCheckUpdate && (
+          <div style={{ padding: '10px 22px', background: 'rgba(244, 114, 182, 0.07)', borderBottom: '1px solid var(--border-glass)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Sparkles size={17} style={{ color: '#f472b6' }} />
+              <div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>App Version: v{CURRENT_APP_VERSION}</div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Tap to check GitHub for new APK releases</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onCheckUpdate}
+              disabled={isCheckingUpdate}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
+                color: '#ffffff',
+                border: 'none',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: isCheckingUpdate ? 'wait' : 'pointer',
+              }}
+            >
+              <RefreshCw size={13} className={isCheckingUpdate ? 'animate-spin' : ''} />
+              <span>{isCheckingUpdate ? 'Checking...' : 'Check for Updates'}</span>
             </button>
           </div>
         )}

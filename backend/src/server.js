@@ -27,7 +27,15 @@ import { createPushService } from './push/index.js';
 import { createPushScheduler } from './push/scheduler.js';
 import { combineProsody } from './tts/avatarVoices.js';
 import { requireAdmin } from './auth/admin.js';
+import {
+  requireAuth,
+  requireAdminUser,
+  requireAnyAdmin,
+  isAdminEmail,
+  createRateLimiter,
+} from './auth/supabaseAuth.js';
 import memoryRouter, { setMemoryStorage, setMemoryEmbedder } from './routes/memory.js';
+import { fetchWeather, fetchAnime, fetchTriviaQuestion, fetchWikipediaSummary, fetchJoke } from './tools/publicApis.js';
 
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a proxy; request host must survive
@@ -38,6 +46,25 @@ app.use(express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '25m
 // playback (the lip-sync source!) from any dev/prod origin. '*' must reflect
 // the request origin instead.
 app.use(cors(config.corsOrigins.includes('*') ? { origin: true } : { origin: config.corsOrigins }));
+
+// --- Baseline security headers on every response (API never serves HTML frames) ---
+app.use((_req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'DENY');
+  res.set('Referrer-Policy', 'no-referrer');
+  res.set('X-DNS-Prefetch-Control', 'off');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin'); // audio bytes needed cross-origin by <audio crossOrigin="anonymous">
+  next();
+});
+
+// --- Rate limiters (identity-aware; protects LLM/TTS quota pools & auth endpoints) ---
+const globalLimiter = createRateLimiter({ windowMs: 60_000, max: 240, keyBy: (req) => req.user?.email || req.ip });
+const chatLimiter = createRateLimiter({ windowMs: 60_000, max: 20, keyBy: (req) => req.user?.email || req.ip });
+const verifyAccessLimiter = createRateLimiter({ windowMs: 60_000, max: 60, keyBy: (req) => req.ip });
+const mediaLimiter = createRateLimiter({ windowMs: 60_000, max: 40, keyBy: (req) => req.user?.email || req.ip });
+const sttLimiter = createRateLimiter({ windowMs: 60_000, max: 15, keyBy: (req) => req.user?.email || req.ip });
+const pushTestLimiter = createRateLimiter({ windowMs: 60_000, max: 10, keyBy: (req) => req.user?.email || req.ip });
+app.use('/api', globalLimiter);
 
 const storage = await createStorage();
 const keyPool = new KeyPool(storage);
@@ -129,16 +156,21 @@ app.get('/api/health', handleHealth);
 app.get('/health', handleHealth);
 app.get('/', handleHealth);
 
-app.post('/api/chat', async (req, res, next) => {
+app.post('/api/chat', requireAuth, chatLimiter, async (req, res, next) => {
   try {
-    const { conversation_id, persona_id, user_id, message, avatar_id } = req.body || {};
+    const { conversation_id, persona_id, message, avatar_id } = req.body || {};
     if (!message || typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'message (string) is required' });
     }
+    if (message.length > 4000) {
+      return res.status(400).json({ error: 'message too long (max 4000 characters)' });
+    }
+    // Identity ALWAYS comes from the verified session token — the client's
+    // claimed user_id is ignored, so one account can never touch another's data.
     const result = await orchestrator.handle({
       conversationId: conversation_id,
       personaId: persona_id,
-      userId: user_id || 'local-user',
+      userId: req.user.email,
       message: message.trim(),
       avatarId: avatar_id || 'waguri',
     });
@@ -148,9 +180,15 @@ app.post('/api/chat', async (req, res, next) => {
 
 // Feeling layer: the frontend calls this after user inactivity so Aria/Waguri can
 // send a spontaneous in-character line (text + emotion + voice).
-app.post('/api/idle-comment', async (req, res, next) => {
+app.post('/api/idle-comment', requireAuth, chatLimiter, async (req, res, next) => {
   try {
     const { conversation_id, persona_id, idle_seconds, avatar_id } = req.body || {};
+    if (conversation_id) {
+      const conv = await storage.getConversation(conversation_id).catch(() => null);
+      if (conv && conv.user_id && conv.user_id !== req.user.email && !req.user.isAdmin) {
+        return res.status(403).json({ error: 'unauthorized: this conversation belongs to another user' });
+      }
+    }
     const result = await orchestrator.idleComment({
       conversationId: conversation_id,
       personaId: persona_id,
@@ -161,21 +199,27 @@ app.post('/api/idle-comment', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.get('/api/conversations/latest', async (req, res, next) => {
+app.get('/api/conversations/latest', requireAuth, async (req, res, next) => {
   try {
-    const userId = req.query.user_id || 'local-user';
+    const userId = req.user.email;
     const conversation = await storage.getLatestConversation?.(userId);
     if (!conversation) return res.json({ conversation: null });
+    if (conversation.user_id && conversation.user_id !== userId) {
+      return res.json({ conversation: null });
+    }
     const history = await storage.getHistory(conversation.id, { page: 1, limit: 50 });
     res.json({ conversation, conversation_id: conversation.id, ...history });
   } catch (e) { next(e); }
 });
 
-app.get('/api/conversations/:id/history', async (req, res, next) => {
+app.get('/api/conversations/:id/history', requireAuth, async (req, res, next) => {
   try {
     const conversation = await storage.getConversation(req.params.id);
     if (!conversation) return res.status(404).json({ error: 'conversation not found' });
-    const requestingUserId = req.query.user_id || req.get('x-user-id') || 'local-user';
+    // Only the conversation owner (or an admin) may read it.
+    const requestingUserId = req.user.isAdmin && (req.query.user_id || req.get('x-user-id'))
+      ? (req.query.user_id || req.get('x-user-id'))
+      : req.user.email;
     if (conversation.user_id && conversation.user_id !== requestingUserId) {
       return res.status(403).json({ error: 'unauthorized: this conversation belongs to another user' });
     }
@@ -191,7 +235,7 @@ app.get('/api/push/vapid-public-key', (_req, res) => {
   res.json({ publicKey: config.push.vapidPublicKey });
 });
 
-app.get('/api/push/status', async (_req, res, next) => {
+app.get('/api/push/status', requireAnyAdmin, async (_req, res, next) => {
   try {
     const subs = await storage.listPushSubscriptions();
     const lastNotified = await storage.getLastPushNotificationTime?.();
@@ -207,14 +251,15 @@ app.get('/api/push/status', async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.post('/api/push/subscribe', async (req, res, next) => {
+app.post('/api/push/subscribe', requireAuth, async (req, res, next) => {
   try {
-    const { subscription, user_id } = req.body || {};
+    const { subscription } = req.body || {};
     if (!subscription || !subscription.endpoint || !subscription.keys) {
       return res.status(400).json({ error: 'valid subscription object is required' });
     }
+    // Bind the subscription to the VERIFIED identity, not a client-claimed id.
     const saved = await storage.upsertPushSubscription({
-      user_id: user_id || 'local-user',
+      user_id: req.user.email,
       endpoint: subscription.endpoint,
       p256dh: subscription.keys.p256dh,
       auth: subscription.keys.auth,
@@ -223,7 +268,7 @@ app.post('/api/push/subscribe', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.post('/api/push/unsubscribe', async (req, res, next) => {
+app.post('/api/push/unsubscribe', requireAuth, async (req, res, next) => {
   try {
     const { endpoint } = req.body || {};
     if (!endpoint) return res.status(400).json({ error: 'endpoint is required' });
@@ -232,12 +277,11 @@ app.post('/api/push/unsubscribe', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.post('/api/push/test', async (req, res, next) => {
+app.post('/api/push/test', requireAuth, pushTestLimiter, async (req, res, next) => {
   try {
-    const { user_id, message, title, endpoint } = req.body || {};
+    const { message, title } = req.body || {};
     const result = await pushService.sendNotification({
-      userId: user_id,
-      endpoint,
+      userId: req.user.email, // only the caller's own subscriptions — no spamming others
       isTest: true,
       tag: 'waguri-manual-test',
       title: title || 'Waguri ❤️',
@@ -247,8 +291,8 @@ app.post('/api/push/test', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Automated girlfriend push trigger (hits via cron-job.org / external cron / admin / manual testing)
-app.all('/api/push/trigger-auto', async (req, res, next) => {
+// Automated girlfriend push trigger (cron-job.org / external cron with ADMIN_TOKEN only)
+app.all('/api/push/trigger-auto', requireAdmin, async (req, res, next) => {
   try {
     const force = req.query?.force === 'true' || req.body?.force === true;
     const slot = req.query?.slot || req.body?.slot || null;
@@ -258,47 +302,62 @@ app.all('/api/push/trigger-auto', async (req, res, next) => {
 });
 
 // --- Alarms & Reminders (Option 5: Automatic Background Web Push) ---
-app.get('/api/alarms', async (req, res, next) => {
+// Load an alarm and verify the caller owns it (admins may act on any alarm).
+async function findOwnedAlarm(id, user) {
+  const alarms = await storage.listAlarms(user.email);
+  const owned = alarms.find((a) => a.id === id);
+  if (owned) return owned;
+  if (!user.isAdmin) return null;
+  const all = await storage.listAlarms();
+  return all.find((a) => a.id === id) || null;
+}
+
+app.get('/api/alarms', requireAuth, async (req, res, next) => {
   try {
-    const userId = req.query.user_id || 'local-user';
+    const userId = req.user.email;
     const alarms = await storage.listAlarms(userId);
     res.json({ ok: true, alarms });
   } catch (e) { next(e); }
 });
 
-app.post('/api/alarms', async (req, res, next) => {
+app.post('/api/alarms', requireAuth, async (req, res, next) => {
   try {
     const alarm = req.body || {};
     if (!alarm.title || !alarm.time) {
       return res.status(400).json({ error: 'title and time are required' });
     }
-    const saved = await storage.upsertAlarm(alarm);
+    if (typeof alarm.title !== 'string' || alarm.title.length > 200) {
+      return res.status(400).json({ error: 'title must be a string of at most 200 characters' });
+    }
+    // Ownership is stamped from the verified identity — never from the body.
+    const saved = await storage.upsertAlarm({ ...alarm, user_id: req.user.email });
     res.json({ ok: true, alarm: saved });
   } catch (e) { next(e); }
 });
 
-app.delete('/api/alarms/:id', async (req, res, next) => {
+app.delete('/api/alarms/:id', requireAuth, async (req, res, next) => {
   try {
+    const owned = await findOwnedAlarm(req.params.id, req.user);
+    if (!owned) return res.status(404).json({ error: 'Alarm not found' });
     const deleted = await storage.deleteAlarm(req.params.id);
     res.json({ ok: true, deleted });
   } catch (e) { next(e); }
 });
 
-app.post('/api/alarms/:id/toggle', async (req, res, next) => {
+app.post('/api/alarms/:id/toggle', requireAuth, async (req, res, next) => {
   try {
-    const { enabled } = req.body || {};
-    const alarms = await storage.listAlarms();
-    const existing = alarms.find((a) => a.id === req.params.id);
+    const existing = await findOwnedAlarm(req.params.id, req.user);
     if (!existing) return res.status(404).json({ error: 'Alarm not found' });
+    const { enabled } = req.body || {};
     const isEnabled = typeof enabled === 'boolean' ? enabled : !existing.enabled;
     const updated = await storage.upsertAlarm({ ...existing, enabled: isEnabled });
     res.json({ ok: true, alarm: updated });
   } catch (e) { next(e); }
 });
 
-app.post('/api/alarms/test', async (req, res, next) => {
+app.post('/api/alarms/test', requireAuth, pushTestLimiter, async (req, res, next) => {
   try {
-    const { user_id, title, message, type } = req.body || {};
+    const { title, message, type } = req.body || {};
     const notifTitle = type === 'reminder'
       ? `🔔 Reminder Test: ${title || 'Drink Water'}`
       : `⏰ Wakeup Alarm Test: ${title || 'Morning Alarm'}`;
@@ -307,7 +366,7 @@ app.post('/api/alarms/test', async (req, res, next) => {
       : 'Wake up sleepyhead! Your Waguri alarm is working in the background! ❤️');
 
     const result = await pushService.sendNotification({
-      userId: user_id || 'local-user',
+      userId: req.user.email, // only to the caller's own devices
       title: notifTitle,
       body: notifBody,
       tag: `waguri-alarm-test-${Date.now()}`,
@@ -317,7 +376,7 @@ app.post('/api/alarms/test', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.post('/api/alarms/evaluate', async (_req, res, next) => {
+app.post('/api/alarms/evaluate', requireAdmin, async (_req, res, next) => {
   try {
     const result = await pushScheduler.evaluateAndSend({ force: true });
     res.json({ ok: true, result });
@@ -340,7 +399,7 @@ app.get('/api/keypool/status', requireAdmin, (_req, res) => {
   });
 });
 
-app.get('/api/persona', async (req, res, next) => {
+app.get('/api/persona', requireAuth, async (req, res, next) => {
   try {
     const { id } = req.query;
     const persona = id ? await storage.getPersona(id) : await storage.getDefaultPersona();
@@ -351,10 +410,13 @@ app.get('/api/persona', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.post('/api/persona', async (req, res, next) => {
+// Persona writes are admin-only (previously ANY caller could rewrite the soul).
+app.post('/api/persona', requireAnyAdmin, async (req, res, next) => {
   try {
     const { id, name, backstory, personality_traits, location, speech_style, prompt_template } = req.body || {};
-    if (!name) return res.status(400).json({ error: 'name is required' });
+    if (!name || typeof name !== 'string' || name.length > 120) {
+      return res.status(400).json({ error: 'name (string, max 120 chars) is required' });
+    }
     const persona = await storage.upsertPersona({
       id, name, backstory, personality_traits, location, speech_style, prompt_template,
     });
@@ -365,11 +427,11 @@ app.post('/api/persona', async (req, res, next) => {
 // Mood palette: read/write without redeploying (acceptance: persona/mood text
 // editable via Supabase — this is the API equivalent). Token-gated like the other
 // internal routes.
-app.get('/api/moods', requireAdmin, async (_req, res, next) => {
+app.get('/api/moods', requireAnyAdmin, async (_req, res, next) => {
   try { res.json({ moods: await storage.listAllMoods() }); } catch (e) { next(e); }
 });
 
-app.post('/api/moods', requireAdmin, async (req, res, next) => {
+app.post('/api/moods', requireAnyAdmin, async (req, res, next) => {
   try {
     const body = req.body || {};
     if (!body.name || typeof body.name !== 'string') {
@@ -390,44 +452,60 @@ app.post('/api/moods', requireAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Whitelist access management for Google authentication
-const ADMIN_EMAILS = [
-  'dakshgoyal1812@gmail.com',
-];
+// Whitelist access management for Google authentication.
+// The authoritative admin list lives in config.adminEmails (ADMIN_EMAILS env).
+// NOTE: claiming to be an admin is NOT enough anymore — admin routes require a
+// VERIFIED Supabase session whose email is on that list (requireAdminUser), or
+// the server-side ADMIN_TOKEN for maintenance scripts.
 
-app.get('/api/admin/allowed-users', async (_req, res, next) => {
+// Single email verification endpoint - checks ONLY the specific email, prevents leaking other users' emails
+app.get('/api/auth/verify-access', verifyAccessLimiter, async (req, res, next) => {
   try {
+    const email = (req.query.email || '').trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      return res.status(400).json({ error: 'Valid email parameter required' });
+    }
+    if (isAdminEmail(email)) {
+      return res.json({ ok: true, allowed: true, isAdmin: true });
+    }
     const list = await storage.listAllowedUsers();
-    res.json({ ok: true, users: list, admin_emails: ADMIN_EMAILS });
+    const isAllowed = list.some((u) => {
+      const e = (typeof u === 'string' ? u : u.email).trim().toLowerCase();
+      return e === email;
+    });
+    return res.json({ ok: true, allowed: isAllowed, isAdmin: false });
   } catch (e) { next(e); }
 });
 
-app.post('/api/admin/allowed-users', async (req, res, next) => {
+// Admin-only listing of allowed users — verified admin session (or admin token) required.
+app.get('/api/admin/allowed-users', requireAnyAdmin, async (req, res, next) => {
   try {
-    const { email, adminEmail } = req.body || {};
-    const adminClean = (adminEmail || '').trim().toLowerCase();
-    if (!ADMIN_EMAILS.includes(adminClean)) {
-      return res.status(403).json({ error: 'Unauthorized: only primary admins can manage access' });
-    }
+    const list = await storage.listAllowedUsers();
+    res.json({ ok: true, users: list, admin_emails: config.adminEmails });
+  } catch (e) { next(e); }
+});
+
+app.post('/api/admin/allowed-users', requireAdminUser, async (req, res, next) => {
+  try {
+    const { email } = req.body || {};
     const cleanEmail = (email || '').trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 254) {
       return res.status(400).json({ error: 'Valid email address is required' });
     }
-    await storage.addAllowedUser(cleanEmail, adminClean);
+    await storage.addAllowedUser(cleanEmail, req.user.email);
     const list = await storage.listAllowedUsers();
     res.json({ ok: true, users: list });
   } catch (e) { next(e); }
 });
 
-app.delete('/api/admin/allowed-users', async (req, res, next) => {
+app.delete('/api/admin/allowed-users', requireAdminUser, async (req, res, next) => {
   try {
-    const { email, adminEmail } = req.body || {};
-    const adminClean = (adminEmail || '').trim().toLowerCase();
-    if (!ADMIN_EMAILS.includes(adminClean)) {
-      return res.status(403).json({ error: 'Unauthorized: only primary admins can manage access' });
-    }
+    const { email } = req.body || {};
     const cleanEmail = (email || '').trim().toLowerCase();
-    if (ADMIN_EMAILS.includes(cleanEmail)) {
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: 'Valid email address is required' });
+    }
+    if (isAdminEmail(cleanEmail)) {
       return res.status(400).json({ error: 'Cannot remove primary admin accounts' });
     }
     await storage.removeAllowedUser(cleanEmail);
@@ -439,7 +517,7 @@ app.delete('/api/admin/allowed-users', async (req, res, next) => {
 // Spec route: adjust the persona/character (prompt, temperature, mood lock) from
 // Supabase-driven data without redeploying. Token-protected; merges into the
 // current character rather than requiring every field.
-app.post('/api/character/update', requireAdmin, async (req, res, next) => {
+app.post('/api/character/update', requireAnyAdmin, async (req, res, next) => {
   try {
     const body = req.body || {};
     const existing = body.id ? await storage.getPersona(body.id) : await storage.getDefaultPersona();
@@ -466,7 +544,7 @@ app.post('/api/character/update', requireAdmin, async (req, res, next) => {
 // Spec route: standalone TTS proxy. The client never talks to TTS providers
 // Spec route: standalone TTS proxy. The client never talks to TTS providers
 // directly — POST { text, mood?, avatar_id? } returns the synthesized audio bytes.
-app.post('/api/tts', async (req, res, next) => {
+app.post('/api/tts', requireAuth, mediaLimiter, async (req, res, next) => {
   try {
     const { text, mood, avatar_id } = req.body || {};
     if (!text || typeof text !== 'string' || !text.trim()) {
@@ -492,7 +570,7 @@ app.post('/api/tts', async (req, res, next) => {
 // Replay helper for the avatar: the audio cache is in-memory (Render's ephemeral
 // disk), so audio_url values from earlier messages die on every restart. The UI
 // calls this with a message's text to mint a FRESH url and keep lip-sync working.
-app.post('/api/tts/url', async (req, res, next) => {
+app.post('/api/tts/url', requireAuth, mediaLimiter, async (req, res, next) => {
   try {
     const { text, mood, avatar_id } = req.body || {};
     if (!text || typeof text !== 'string' || !text.trim()) {
@@ -518,15 +596,15 @@ app.post('/api/tts/url', async (req, res, next) => {
 });
 
 // ---- game layer: she plays WITH you, narrating through her voice pipeline ----
-app.post('/api/game/start', async (req, res, next) => {
+app.post('/api/game/start', requireAuth, async (req, res, next) => {
   try {
     const { game, conversation_id } = req.body || {};
-    if (!game) return res.status(400).json({ error: 'game is required (tictactoe | rps | twentyq)' });
+    if (!game) return res.status(400).json({ error: 'game is required (tictactoe | rps | twentyq | trivia)' });
     res.json(await games.start({ game, conversationId: conversation_id }));
   } catch (e) { next(e); }
 });
 
-app.post('/api/game/move', async (req, res, next) => {
+app.post('/api/game/move', requireAuth, async (req, res, next) => {
   try {
     const { session_id, move, choice, answer } = req.body || {};
     if (!session_id) return res.status(400).json({ error: 'session_id is required' });
@@ -534,7 +612,7 @@ app.post('/api/game/move', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-app.get('/api/game/state/:sessionId', async (req, res, next) => {
+app.get('/api/game/state/:sessionId', requireAuth, async (req, res, next) => {
   try {
     const s = games.state(req.params.sessionId);
     if (!s) return res.status(404).json({ error: 'game session not found or expired' });
@@ -542,9 +620,50 @@ app.get('/api/game/state/:sessionId', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ---- public tools layer: 100% free external enrichments (Weather, Anime, Facts, Trivia, Joke) ----
+// Signed-in users only — these proxy external services and are an SSRF/spam surface.
+app.get('/api/tools/weather', requireAuth, async (req, res, next) => {
+  try {
+    const city = req.query.city || 'Delhi';
+    const data = await fetchWeather(city);
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/tools/anime', requireAuth, async (req, res, next) => {
+  try {
+    const q = req.query.q || 'Naruto';
+    const isRec = req.query.recommend === 'true' || req.query.top === 'true';
+    const data = await fetchAnime(q, isRec);
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/tools/trivia', requireAuth, async (_req, res, next) => {
+  try {
+    const data = await fetchTriviaQuestion();
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/tools/fact', requireAuth, async (req, res, next) => {
+  try {
+    const q = req.query.q || req.query.topic || 'Earth';
+    const data = await fetchWikipediaSummary(q);
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+app.get('/api/tools/joke', requireAuth, async (_req, res, next) => {
+  try {
+    const data = await fetchJoke();
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
 // Voice input fallback for browsers without the Web Speech API: multipart audio
 // -> Groq's OpenAI-compatible Whisper endpoint. Key stays server-side.
-app.post('/api/stt', async (req, res, next) => {
+app.post('/api/stt', requireAuth, sttLimiter, async (req, res, next) => {
   try {
     const groqKeys = [];
     if (typeof collectKeys === 'function') groqKeys.push(...collectKeys('groq'));
