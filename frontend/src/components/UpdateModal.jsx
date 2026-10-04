@@ -3,7 +3,7 @@ import { Download, Sparkles, X, RefreshCw, CheckCircle2, AlertCircle, ArrowUpCir
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 
-export const CURRENT_APP_VERSION = '1.0.2';
+export const CURRENT_APP_VERSION = '1.0.3';
 const GITHUB_REPO = 'dakshgoyal1812/Waguri';
 
 // Compare semantic versions (returns true if remote is strictly newer than current)

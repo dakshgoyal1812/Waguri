@@ -30,9 +30,11 @@ console.log('--- Running User Privacy & Email Isolation Tests ---');
   });
 
   app.get('/api/admin/allowed-users', async (req, res) => {
-    const adminEmail = (req.query.adminEmail || req.get('x-admin-email') || '').trim().toLowerCase();
-    const isAdmin = ADMIN_EMAILS.includes(adminEmail);
-    if (!isAdmin) {
+    // Mirrors the hardened backend rule: identity comes from the VERIFIED
+    // session (x-test-user-id in test mode) — a claimed adminEmail query param
+    // or header is never trusted.
+    const identity = (req.get('x-test-user-id') || '').trim().toLowerCase();
+    if (!identity || !ADMIN_EMAILS.includes(identity)) {
       return res.status(403).json({ error: 'Unauthorized: only primary admins can manage access' });
     }
     const list = await storage.listAllowedUsers();
@@ -69,8 +71,15 @@ console.log('--- Running User Privacy & Email Isolation Tests ---');
   const resAliceDenied = await fetch(`${baseUrl}/api/admin/allowed-users?adminEmail=alice@test.com`);
   assert.equal(resAliceDenied.status, 403, 'Non-admin user must return 403 Forbidden');
 
-  // Test primary admin accessing /api/admin/allowed-users
-  const resAdmin = await fetch(`${baseUrl}/api/admin/allowed-users?adminEmail=dakshgoyal1812@gmail.com`);
+  // A CLAIMED admin email (no verified session) must also be rejected — this was
+  // the trivial "type anything" bypass; the query/header claim no longer counts.
+  const resClaimedAdmin = await fetch(`${baseUrl}/api/admin/allowed-users?adminEmail=dakshgoyal1812@gmail.com`);
+  assert.equal(resClaimedAdmin.status, 403, 'Claimed admin email without verified session must return 403 Forbidden');
+
+  // Test primary admin accessing /api/admin/allowed-users via a verified test identity
+  const resAdmin = await fetch(`${baseUrl}/api/admin/allowed-users`, {
+    headers: { 'x-test-user-id': 'dakshgoyal1812@gmail.com' },
+  });
   assert.equal(resAdmin.status, 200, 'Admin must receive 200 OK');
   const adminData = await resAdmin.json();
   assert.equal(adminData.ok, true);

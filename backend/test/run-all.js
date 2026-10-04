@@ -10,8 +10,10 @@ const tests = [
   { name: 'Milestone 6: Load-test failover & zero-downtime invisibility', file: 'test/run-m6.js' },
   { name: 'Account Chat Isolation & AES-256-GCM Encryption', file: 'test/test-account-chat-isolation.js' },
   { name: 'PWA Web Push Notifications & Autonomous Scheduler', file: 'test/test-push-notifications.js' },
+  { name: 'FCM Native Push (Android APK delivery)', file: 'test/test-fcm.js' },
   { name: 'Memory Inspector: Auth, CRUD, Search, Re-embed & Bulk Operations', file: 'test/memory.test.js' },
   { name: 'User Privacy, Email Protection & Chat Isolation', file: 'test/test-user-privacy-isolation.js' },
+  { name: 'Security Hardening: auth gates, admin claims, vault tokens', file: 'test/test-security-hardening.js' },
   { name: 'Public APIs: Weather, Anime, Wikipedia Facts, Trivia & Jokes', file: 'test/test-public-apis.js' },
 ];
 

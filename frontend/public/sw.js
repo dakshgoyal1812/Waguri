@@ -1,13 +1,14 @@
-// Waguri AI Persona Companion — PWA Service Worker (v7)
-// v7: Ultra-fast PWA performance, separate 3D model cache (VRM/GLB), chunk asset caching
-const SHELL_CACHE = 'waguri-shell-v7';
-const MODELS_CACHE = 'waguri-models-v1';
+// Waguri AI Persona Companion — PWA Service Worker (v8)
+// v8: optimized VRM models (129MB -> 12MB) + webp thumbnails/logo/background.
+// Models cache bumped to v2: URLs are unchanged but contents are new files.
+const SHELL_CACHE = 'waguri-shell-v8';
+const MODELS_CACHE = 'waguri-models-v2';
 
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/logo.png',
+  '/logo.webp',
   '/favicon.ico',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

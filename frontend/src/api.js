@@ -1,15 +1,12 @@
 // API client connecting frontend to backend endpoints (PRD section 10).
 // In dev: proxies /api via Vite proxy to backend port.
 // In prod (Vercel): uses NEXT_PUBLIC_API_URL or VITE_API_URL or relative /api.
-
-// PRD section 11 names NEXT_PUBLIC_API_URL; Vite builds use VITE_API_URL. Both work.
-// If unset in production, defaults to the live Render backend: https://waguri-zhf3.onrender.com
-export const PROD_DEFAULT_BACKEND = 'https://waguri-zhf3.onrender.com';
-export const BASE_URL = (
-  import.meta.env.VITE_API_URL ||
-  import.meta.env.NEXT_PUBLIC_API_URL ||
-  (import.meta.env.DEV ? '' : PROD_DEFAULT_BACKEND)
-).replace(/\/$/, '');
+//
+// SECURITY: every request attaches the Supabase access token via
+// getAuthHeaders(). The backend verifies that token and derives the identity
+// from it — client-sent user_id strings are ignored by the server.
+import { getAuthHeaders } from './supabaseClient.js';
+import { BASE_URL, PROD_DEFAULT_BACKEND } from './lib/apiBase.js';
 
 async function handleResponse(res) {
   if (!res.ok) {
@@ -30,11 +27,11 @@ async function handleResponse(res) {
 export async function sendMessage({ conversationId, personaId, userId, message, avatarId }) {
   const res = await fetch(`${BASE_URL}/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       conversation_id: conversationId,
       persona_id: personaId,
-      user_id: userId || 'local-user',
+      user_id: userId || 'local-user', // informational only; server uses the JWT identity
       message,
       avatar_id: avatarId,
     }),
@@ -47,7 +44,7 @@ export async function sendMessage({ conversationId, personaId, userId, message, 
 export async function fetchIdleComment({ conversationId, personaId, idleSeconds, avatarId }) {
   const res = await fetch(`${BASE_URL}/api/idle-comment`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       conversation_id: conversationId,
       persona_id: personaId,
@@ -61,12 +58,16 @@ export async function fetchIdleComment({ conversationId, personaId, idleSeconds,
 export async function getConversationHistory(conversationId, { page = 1, limit = 50, userId } = {}) {
   const query = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (userId) query.set('user_id', userId);
-  const res = await fetch(`${BASE_URL}/api/conversations/${conversationId}/history?${query.toString()}`);
+  const res = await fetch(`${BASE_URL}/api/conversations/${conversationId}/history?${query.toString()}`, {
+    headers: await getAuthHeaders(),
+  });
   return handleResponse(res);
 }
 
 export async function getLatestConversation(userId = 'local-user') {
-  const res = await fetch(`${BASE_URL}/api/conversations/latest?user_id=${encodeURIComponent(userId)}`);
+  const res = await fetch(`${BASE_URL}/api/conversations/latest?user_id=${encodeURIComponent(userId)}`, {
+    headers: await getAuthHeaders(),
+  });
   return handleResponse(res);
 }
 
@@ -74,7 +75,7 @@ export async function getPersona(personaId) {
   const url = personaId
     ? `${BASE_URL}/api/persona?id=${encodeURIComponent(personaId)}`
     : `${BASE_URL}/api/persona`;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: await getAuthHeaders() });
   return handleResponse(res);
 }
 
@@ -84,7 +85,7 @@ export async function getPersona(personaId) {
 export async function synthesizeToUrl(text, mood, avatarId) {
   const res = await fetch(`${BASE_URL}/api/tts/url`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ text, mood, avatar_id: avatarId }),
   });
   return handleResponse(res);
@@ -92,14 +93,16 @@ export async function synthesizeToUrl(text, mood, avatarId) {
 
 // --- Alarms & Reminders API (Option 5: Background Web Push) ---
 export async function fetchAlarms(userId = 'local-user') {
-  const res = await fetch(`${BASE_URL}/api/alarms?user_id=${encodeURIComponent(userId)}`);
+  const res = await fetch(`${BASE_URL}/api/alarms?user_id=${encodeURIComponent(userId)}`, {
+    headers: await getAuthHeaders(),
+  });
   return handleResponse(res);
 }
 
 export async function saveAlarm(alarm) {
   const res = await fetch(`${BASE_URL}/api/alarms`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(alarm),
   });
   return handleResponse(res);
@@ -108,6 +111,7 @@ export async function saveAlarm(alarm) {
 export async function deleteAlarm(id) {
   const res = await fetch(`${BASE_URL}/api/alarms/${encodeURIComponent(id)}`, {
     method: 'DELETE',
+    headers: await getAuthHeaders(),
   });
   return handleResponse(res);
 }
@@ -115,7 +119,7 @@ export async function deleteAlarm(id) {
 export async function toggleAlarm(id, enabled) {
   const res = await fetch(`${BASE_URL}/api/alarms/${encodeURIComponent(id)}/toggle`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ enabled }),
   });
   return handleResponse(res);
@@ -124,7 +128,7 @@ export async function toggleAlarm(id, enabled) {
 export async function testAlarmPush({ title, message, type = 'alarm', userId = 'local-user' } = {}) {
   const res = await fetch(`${BASE_URL}/api/alarms/test`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ title, message, type, user_id: userId }),
   });
   return handleResponse(res);
@@ -134,7 +138,7 @@ export async function testAlarmPush({ title, message, type = 'alarm', userId = '
 export async function startGame(game, conversationId) {
   const res = await fetch(`${BASE_URL}/api/game/start`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ game, conversation_id: conversationId }),
   });
   return handleResponse(res);
@@ -143,7 +147,7 @@ export async function startGame(game, conversationId) {
 export async function gameMove({ sessionId, move, choice, answer }) {
   const res = await fetch(`${BASE_URL}/api/game/move`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ session_id: sessionId, move, choice, answer }),
   });
   return handleResponse(res);
@@ -151,11 +155,11 @@ export async function gameMove({ sessionId, move, choice, answer }) {
 
 // STT fallback for browsers without the Web Speech API (recorded blob upload).
 export async function speechToText(blob, lang) {
-  const headers = {
+  const headers = await getAuthHeaders({
     'Content-Type': blob.type || 'audio/webm',
     'x-file-name': 'speech.webm',
     'x-audio-type': blob.type || 'audio/webm',
-  };
+  });
   if (lang) headers['x-audio-lang'] = lang.startsWith('hi') ? 'hi' : 'en';
 
   const primaryUrl = `${BASE_URL}/api/stt`;
@@ -208,32 +212,28 @@ export async function checkEmailAccess(email) {
   return handleResponse(res);
 }
 
-// Admin access whitelist management (accessible only by verified admins)
-export async function fetchAllowedUsers(adminEmail) {
-  const query = adminEmail ? `?adminEmail=${encodeURIComponent(adminEmail)}` : '';
-  const res = await fetch(`${BASE_URL}/api/admin/allowed-users${query}`, {
-    headers: {
-      'x-admin-email': adminEmail || '',
-    },
+// Admin access whitelist management (backend requires a verified admin session)
+export async function fetchAllowedUsers() {
+  const res = await fetch(`${BASE_URL}/api/admin/allowed-users`, {
+    headers: await getAuthHeaders(),
   });
   return handleResponse(res);
 }
 
-export async function addAllowedUser(email, adminEmail) {
+export async function addAllowedUser(email) {
   const res = await fetch(`${BASE_URL}/api/admin/allowed-users`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, adminEmail }),
+    headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ email }),
   });
   return handleResponse(res);
 }
 
-export async function removeAllowedUser(email, adminEmail) {
+export async function removeAllowedUser(email) {
   const res = await fetch(`${BASE_URL}/api/admin/allowed-users`, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, adminEmail }),
+    headers: await getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ email }),
   });
   return handleResponse(res);
 }
-

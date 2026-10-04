@@ -1,10 +1,22 @@
 import express from 'express';
 import { requireAdmin } from '../auth/admin.js';
+import {
+  requireAuth,
+  resolveIdentity,
+  createRateLimiter,
+  checkVaultPassword,
+  signVaultToken,
+  verifyVaultToken,
+  isValidAdminToken,
+} from '../auth/supabaseAuth.js';
 import { embed as defaultEmbed } from '../rag/embeddings.js';
 
 let activeStorage = null;
 let activeEmbedder = null;
 const cacheInvalidationListeners = new Set();
+
+// Brute-force protection for the vault passcode endpoint (per IP).
+const unlockLimiter = createRateLimiter({ windowMs: 5 * 60_000, max: 8 });
 
 /**
  * Register a listener to be notified when memory entries are edited or deleted.
@@ -64,8 +76,55 @@ async function runEmbed(text) {
  */
 export function createMemoryRouter(options = {}) {
   const router = express.Router();
-  const authMiddleware = options.requireAdmin || requireAdmin;
+
+  // POST /unlock — exchange the vault passcode for a short-lived vault token.
+  // The passcode is checked SERVER-SIDE (constant-time) and rate-limited per IP,
+  // so it is never stored in or verifiable from the client bundle.
+  router.post('/unlock', unlockLimiter, async (req, res) => {
+    try {
+      const password = typeof req.body?.password === 'string' ? req.body.password : '';
+      if (!password) {
+        return res.status(400).json({ error: 'password is required' });
+      }
+      if (!checkVaultPassword(password)) {
+        return res.status(401).json({ error: 'Incorrect vault password. Access denied.' });
+      }
+      // Identify who unlocked: verified JWT identity when presented, else anonymous.
+      const identity = await resolveIdentity(req).catch(() => null);
+      const email = identity?.email || 'vault-user';
+      res.json({ ok: true, vault_token: signVaultToken(email), expires_in_ms: options.vaultTokenTtlMs || undefined });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Unlock failed' });
+    }
+  });
+
+  // Everything below requires EITHER a valid vault token (minted by /unlock,
+  // bound to the verified Supabase identity) OR the server-side ADMIN_TOKEN
+  // (maintenance scripts + tests). Client-claimed emails are never trusted.
+  const authMiddleware = options.authMiddleware || options.requireAdmin || defaultVaultAuth;
   router.use(authMiddleware);
+
+  async function defaultVaultAuth(req, res, next) {
+    // 1. Legacy/server-side path: ADMIN_TOKEN header (constant-time checked).
+    if (isValidAdminToken(req.get('x-admin-token'))) {
+      req.memoryAccess = { full: true };
+      return next();
+    }
+    // 2. Interactive path: verified Supabase identity + vault token.
+    const identity = await resolveIdentity(req).catch(() => null);
+    if (!identity) {
+      return res.status(401).json({ error: 'Authentication required. Please sign in.' });
+    }
+    const vault = verifyVaultToken(req.get('x-vault-token'));
+    if (!vault) {
+      return res.status(401).json({ error: 'Vault locked. Unlock with the memory password first.' });
+    }
+    if (vault.email !== identity.email && !identity.isAdmin) {
+      return res.status(403).json({ error: 'Vault token does not match the signed-in account' });
+    }
+    req.memoryAccess = { full: identity.isAdmin, email: identity.email };
+    return next();
+  }
 
   const getTargetStorage = async () => options.storage || await getStorage();
   const getTargetEmbed = async (text) => {

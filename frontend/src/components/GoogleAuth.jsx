@@ -22,26 +22,24 @@ import {
   isAdminEmail,
   signInWithGoogle,
   signInWithEmail,
+  signUpWithEmail,
   signOutUser,
-  DEFAULT_BYPASS_USER,
 } from '../supabaseClient.js';
 
-export { DEFAULT_BYPASS_USER };
-
+// SECURITY MODEL (fixed):
+//  - The ONLY trusted session is the Supabase auth session (a signed JWT the
+//    backend verifies on every call). Nothing about login is stored in
+//    localStorage anymore — the old forgeable "whitelisted email" session that
+//    let anyone type an address and get in is gone.
+//  - Email login REQUIRES the account password (verified by Supabase Auth).
+//  - Whitelisted emails without an account can create one via Sign Up (the
+//    whitelist is still enforced after real authentication).
 export default function GoogleAuth({ onUserChange, onLoadingChange, compact = false }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const raw = localStorage.getItem('waguri_auth_user');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed?.email) return parsed;
-      }
-    } catch {}
-    return null;
-  });
+  const [user, setUser] = useState(null);
   const [signingIn, setSigningIn] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
   const menuRef = useRef(null);
 
   // Form states
@@ -62,67 +60,41 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Check initial active session (Google OAuth or stored whitelisted Email session)
+  // Check initial active session — ONLY from the real Supabase session.
+  // The old localStorage restore path was a full security bypass: anyone could
+  // craft a stored JSON user with `app_metadata.provider = 'google'` and get in.
   useEffect(() => {
     let isMounted = true;
 
+    const acceptSession = async (sessionUser) => {
+      if (!sessionUser?.email || !isMounted) return false;
+      // Every account — Google or email — must pass the server-enforced whitelist
+      // (admins always pass). Google accounts are NOT auto-allowed.
+      const clean = sessionUser.email.trim().toLowerCase();
+      const allowed = await verifyEmailAccess(clean);
+      if (!allowed) return false;
+      setUser(sessionUser);
+      onUserChange?.(sessionUser);
+      return true;
+    };
+
     const restoreSession = async () => {
-      // 1. Check Supabase OAuth session
+      // 1. Supabase OAuth / password session
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user?.email) {
-          const clean = session.user.email.trim().toLowerCase();
-          const isGoogleUser =
-            session.user.app_metadata?.provider === 'google' ||
-            Boolean(session.user.user_metadata?.avatar_url) ||
-            Boolean(session.user.identities?.some((i) => i.provider === 'google'));
-
-          // Google accounts are authenticated via Google OAuth; email accounts check whitelist
-          const allowed = isGoogleUser || (await verifyEmailAccess(clean));
-          if (allowed && isMounted) {
-            setUser(session.user);
-            onUserChange?.(session.user);
-            try {
-              localStorage.setItem('waguri_auth_user', JSON.stringify(session.user));
-            } catch {}
+          const ok = await acceptSession(session.user);
+          if (ok) {
             onLoadingChange?.(false);
             return;
-          } else {
-            await signOutUser();
-            try { localStorage.removeItem('waguri_auth_user'); } catch {}
           }
+          await signOutUser();
         }
       } catch (err) {
         console.warn('[auth] Supabase getSession error:', err?.message);
       }
 
-      // 2. Check stored whitelisted email session in localStorage
-      try {
-        const raw = localStorage.getItem('waguri_auth_user');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.email) {
-            const clean = parsed.email.trim().toLowerCase();
-            const isGoogleUser =
-              parsed.app_metadata?.provider === 'google' ||
-              Boolean(parsed.user_metadata?.avatar_url);
-
-            const allowed = isGoogleUser || (await verifyEmailAccess(clean));
-            if (allowed && isMounted) {
-              setUser(parsed);
-              onUserChange?.(parsed);
-              onLoadingChange?.(false);
-              return;
-            } else {
-              localStorage.removeItem('waguri_auth_user');
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('[auth] Stored auth session error:', err?.message);
-      }
-
-      // 3. Fallback: No active session -> remain signed out
+      // 2. No valid session -> remain signed out
       if (isMounted) {
         setUser(null);
         onUserChange?.(null);
@@ -132,22 +104,13 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
 
     restoreSession();
 
-    // Supabase Auth listener for OAuth redirects
+    // Supabase Auth listener for OAuth redirects + token refreshes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted) return;
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
         if (session?.user?.email) {
-          const clean = session.user.email.trim().toLowerCase();
-          const isGoogleUser =
-            session.user.app_metadata?.provider === 'google' ||
-            Boolean(session.user.user_metadata?.avatar_url) ||
-            Boolean(session.user.identities?.some((i) => i.provider === 'google'));
-
-          const allowed = isGoogleUser || (await verifyEmailAccess(clean));
+          const allowed = await acceptSession(session.user);
           if (allowed) {
-            setUser(session.user);
-            onUserChange?.(session.user);
-            try { localStorage.setItem('waguri_auth_user', JSON.stringify(session.user)); } catch {}
             setErrorMsg('');
             setSuccessMsg('');
             setIsAuthModalOpen(false);
@@ -156,21 +119,18 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
             if (typeof window !== 'undefined' && (window.location.hash || window.location.search.includes('code='))) {
               window.history.replaceState({}, document.title, window.location.pathname);
             }
-          } else {
+          } else if (event === 'SIGNED_IN') {
+            const clean = session.user.email.trim().toLowerCase();
             setErrorMsg(`Access Denied: Account "${clean}" is not on the admin whitelist.`);
             await signOutUser();
-            try { localStorage.removeItem('waguri_auth_user'); } catch {}
             setUser(null);
             onUserChange?.(null);
             setIsAuthModalOpen(true);
           }
         }
       } else if (event === 'SIGNED_OUT') {
-        const stored = localStorage.getItem('waguri_auth_user');
-        if (!stored) {
-          setUser(null);
-          onUserChange?.(null);
-        }
+        setUser(null);
+        onUserChange?.(null);
       }
     });
 
@@ -180,76 +140,79 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
     };
   }, [onUserChange, onLoadingChange]);
 
-  // Handler: Email Sign In (Whitelisted Email or Supabase Account)
+  // Handler: Email Sign In — password REQUIRED, verified by Supabase Auth.
   const handleEmailLogin = async (e) => {
     e?.preventDefault?.();
     setErrorMsg('');
     setSuccessMsg('');
     const cleanEmail = email.trim().toLowerCase();
 
-    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+    if (!isSupabaseConfigured) {
+      setErrorMsg('Authentication is not configured yet (missing Supabase keys). Please try again later.');
+      return;
+    }
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+    if (!password || password.length < 6) {
+      setErrorMsg('Please enter your account password (minimum 6 characters).');
       return;
     }
 
     setSigningIn(true);
     try {
-      // If user provided a password, try Supabase password login first
-      if (password && password.trim()) {
-        try {
-          const { data, error } = await signInWithEmail(cleanEmail, password);
-          if (!error && data?.user) {
-            const allowed = await verifyEmailAccess(data.user.email);
-            if (allowed) {
-              setUser(data.user);
-              onUserChange?.(data.user);
-              try { localStorage.setItem('waguri_auth_user', JSON.stringify(data.user)); } catch {}
-              setSuccessMsg(`Welcome, ${data.user.email}!`);
-              setTimeout(() => {
-                setIsAuthModalOpen(false);
-                setSuccessMsg('');
-              }, 600);
-              return;
-            }
-          }
-        } catch (pwdErr) {
-          console.warn('[auth] Supabase password signin skipped/failed:', pwdErr?.message);
+      if (mode === 'signup') {
+        // Sign Up: only whitelisted emails may create an account.
+        const whitelisted = await verifyEmailAccess(cleanEmail);
+        if (!whitelisted) {
+          setErrorMsg(`Access Denied: "${cleanEmail}" is not on the whitelist. Ask an admin to add you in the Admin Portal.`);
+          return;
         }
+        const { data, error } = await signUpWithEmail(cleanEmail, password);
+        if (error) {
+          setErrorMsg(error.message || 'Sign up failed.');
+          return;
+        }
+        if (data?.session?.user) {
+          setUser(data.session.user);
+          onUserChange?.(data.session.user);
+          setSuccessMsg(`Account created. Welcome to Waguri, ${cleanEmail}!`);
+          setTimeout(() => {
+            setIsAuthModalOpen(false);
+            setSuccessMsg('');
+            setEmail('');
+            setPassword('');
+          }, 700);
+          return;
+        }
+        setSuccessMsg('Account created! Check your inbox for the confirmation email, then sign in here.');
+        setMode('signin');
+        return;
       }
 
-      // Direct Whitelisted Email Sign In (Admin-granted access)
-      const allowed = await verifyEmailAccess(cleanEmail);
-
-      if (!allowed) {
+      // Sign In: real credential check via Supabase.
+      const { data, error } = await signInWithEmail(cleanEmail, password);
+      if (error || !data?.user) {
         setErrorMsg(
-          `Access Denied: "${cleanEmail}" is not on the whitelist. Please ask an admin to add your email in the Admin Portal.`
+          error?.message === 'Email not confirmed'
+            ? 'Please confirm your email first (check your inbox for the confirmation link).'
+            : 'Invalid email or password. If you are whitelisted but have no account yet, use Sign Up below.'
         );
         return;
       }
 
-      // Create verified user session
-      const verifiedUser = {
-        id: `email_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
-        email: cleanEmail,
-        user_metadata: {
-          full_name: cleanEmail.split('@')[0],
-          name: cleanEmail.split('@')[0],
-          email: cleanEmail,
-        },
-        app_metadata: {
-          provider: 'email',
-          whitelisted: true,
-        },
-        email_confirmed_at: new Date().toISOString(),
-      };
+      // Real authentication succeeded — enforce the whitelist server-side.
+      const allowed = await verifyEmailAccess(data.user.email);
+      if (!allowed) {
+        setErrorMsg(`Access Denied: "${cleanEmail}" is not on the whitelist. Ask an admin to add you in the Admin Portal.`);
+        await signOutUser();
+        return;
+      }
 
-      try {
-        localStorage.setItem('waguri_auth_user', JSON.stringify(verifiedUser));
-      } catch {}
-
-      setUser(verifiedUser);
-      onUserChange?.(verifiedUser);
-      setSuccessMsg(`Access Granted! Welcome to Waguri, ${cleanEmail}.`);
+      setUser(data.user);
+      onUserChange?.(data.user);
+      setSuccessMsg(`Welcome, ${data.user.email}!`);
       setTimeout(() => {
         setIsAuthModalOpen(false);
         setSuccessMsg('');
@@ -291,14 +254,13 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
   const handleSignOut = async () => {
     setSigningIn(true);
     try {
-      try { localStorage.removeItem('waguri_auth_user'); } catch {}
       await signOutUser();
       setUser(null);
       onUserChange?.(null);
       setMenuOpen(false);
       setIsAuthModalOpen(true);
       setErrorMsg('');
-      setSuccessMsg('You have been signed out. Please sign in with any authorized email or Google account.');
+      setSuccessMsg('You have been signed out. Please sign in with your authorized Google account or email.');
     } finally {
       setSigningIn(false);
     }
@@ -374,7 +336,7 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         <span className="auth-or-line" />
       </div>
 
-      {/* Email Sign In Form */}
+      {/* Email Sign In / Sign Up Form */}
       <form onSubmit={handleEmailLogin} className="auth-form">
         <div className="auth-input-group">
           <Mail size={16} className="auth-input-icon" />
@@ -392,10 +354,12 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
           <Lock size={16} className="auth-input-icon" />
           <input
             type={showPassword ? 'text' : 'password'}
-            placeholder="Password (optional for whitelisted emails)"
+            placeholder={mode === 'signup' ? 'Choose a password (min 6 characters)' : 'Your account password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="auth-input"
+            required
+            minLength={6}
           />
           <button
             type="button"
@@ -411,14 +375,29 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
         <button
           type="submit"
           className="auth-primary-btn"
-          disabled={signingIn || !email.trim()}
+          disabled={signingIn || !email.trim() || password.length < 6}
         >
           {signingIn ? (
             <RefreshCw size={16} className="spin-icon" />
           ) : (
             <ArrowRight size={16} />
           )}
-          <span>{signingIn ? 'Verifying...' : 'Sign In with Email'}</span>
+          <span>{signingIn ? 'Verifying...' : mode === 'signup' ? 'Create Account' : 'Sign In with Email'}</span>
+        </button>
+
+        <button
+          type="button"
+          className="auth-toggle-mode-btn"
+          onClick={() => {
+            setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
+            setErrorMsg('');
+            setSuccessMsg('');
+          }}
+          tabIndex={-1}
+        >
+          {mode === 'signup'
+            ? 'Already have an account? Sign In'
+            : 'No account yet? Sign Up (whitelisted emails only)'}
         </button>
       </form>
     </div>
@@ -489,7 +468,6 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
 
     const userEmail = user.email || '';
     const isGoogle = user.app_metadata?.provider === 'google' || Boolean(user.user_metadata?.avatar_url);
-    const isBypass = user.id === DEFAULT_BYPASS_USER.id || user.app_metadata?.provider === 'bypass';
     const isAdmin = isAdminEmail(userEmail);
     const name = user.user_metadata?.full_name || user.user_metadata?.name || userEmail.split('@')[0] || 'User';
     const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture;
@@ -522,11 +500,9 @@ export default function GoogleAuth({ onUserChange, onLoadingChange, compact = fa
                 <span>
                   {isAdmin
                     ? 'Admin Access'
-                    : isBypass
-                    ? 'Admin (Bypassed)'
                     : isGoogle
                     ? 'Google Verified'
-                    : 'Email Whitelisted'}
+                    : 'Email Verified'}
                 </span>
               </div>
               <p className="dropdown-name">{name}</p>

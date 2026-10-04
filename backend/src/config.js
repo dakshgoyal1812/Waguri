@@ -31,8 +31,33 @@ export const config = {
   encryptionKey: process.env.APP_ENCRYPTION_KEY || '',
 
   // Admin token required by /api/reset-quotas and /api/keypool/status (PRD section 10:
-  // keypool status must not be exposed publicly).
+  // keypool status must not be exposed publicly). NEVER ship this to the frontend —
+  // it is for cron jobs and curl maintenance only.
   adminToken: process.env.ADMIN_TOKEN || '',
+
+  // Admin identity allowlist (Supabase JWT email claim must match one of these for
+  // admin API routes). Comma-separated env overrides the defaults below.
+  adminEmails: list(process.env.ADMIN_EMAILS).length
+    ? list(process.env.ADMIN_EMAILS).map((s) => s.toLowerCase())
+    : [
+        'dakshgoyal1812@gmail.com',
+        'dakshgoyal903@gmail.com',
+        'dakshgoyal1234567@gmail.com',
+        'goyaldaksh284@gmail.com',
+        'goelrishika01@gmail.com',
+      ],
+
+  // Memory Vault passcode — checked SERVER-SIDE only (constant-time compare + rate
+  // limit). It must never live in the frontend bundle. Falls back to the legacy
+  // value so existing users are not locked out; set MEMORY_VAULT_PASSWORD to rotate.
+  memoryVaultPassword: process.env.MEMORY_VAULT_PASSWORD || 'Daksh@2009',
+
+  // Vault unlock tokens stay valid for this long (default 30 min).
+  vaultTokenTtlMs: int(process.env.VAULT_TOKEN_TTL_MS, 30 * 60_000),
+
+  // WAGURI_TEST=1 switches the auth layer into test mode (in-memory identities via
+  // x-test-user-id). This flag is never set in production deployments.
+  isTestMode: process.env.WAGURI_TEST === '1',
 
   corsOrigins: process.env.CORS_ORIGINS ? list(process.env.CORS_ORIGINS) : ['*'],
 

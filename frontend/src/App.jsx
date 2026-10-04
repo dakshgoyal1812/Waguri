@@ -14,7 +14,7 @@ import AlarmModal from './components/AlarmModal.jsx';
 import MemoryInspector from './components/MemoryInspector.jsx';
 import MemoryPasswordModal from './components/MemoryPasswordModal.jsx';
 import UpdateModal, { checkLatestRelease, CURRENT_APP_VERSION } from './components/UpdateModal.jsx';
-import { isAdminEmail, DEFAULT_BYPASS_USER } from './supabaseClient.js';
+import { isAdminEmail } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 import { BUNDLED_AVATARS, DEFAULT_VRM_URL, getCustomVrmBlob } from './lib/vrmStore.js';
@@ -64,24 +64,11 @@ export default function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [activeAudioUrl, setActiveAudioUrl] = useState(null);
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
-  const [authUser, setAuthUser] = useState(() => {
-    try {
-      const raw = localStorage.getItem('waguri_auth_user');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed?.email) return parsed;
-      }
-    } catch {}
-    return null;
-  });
-
-  const [authLoading, setAuthLoading] = useState(() => {
-    try {
-      return !localStorage.getItem('waguri_auth_user');
-    } catch {
-      return true;
-    }
-  });
+  // Auth state starts from scratch on every load: the ONLY trusted session is
+  // the Supabase auth session, resolved by the hidden GoogleAuth below. The old
+  // localStorage-backed initial state was forgeable (security bypass).
+  const [authUser, setAuthUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
 
@@ -565,14 +552,17 @@ export default function App() {
   };
 
   // Persona is fetched from the backend (Supabase `personas` table in prod).
+  // Re-fetches when authUser changes: the endpoint now requires a session, and
+  // the first fetch happens before login completes.
   useEffect(() => {
+    if (!authUser?.email) return;
     getPersona()
       .then((p) => { if (p && p.name) setPersona(p); })
       .catch((err) => {
         console.warn('Could not fetch persona from server:', err.message);
-        setPersona({ name: 'Waguri', personality_traits: [] });
+        setPersona((prev) => prev || { name: 'Waguri', personality_traits: [] });
       });
-  }, []);
+  }, [authUser?.email]);
 
   // Persist conversationId in user-scoped localStorage
   useEffect(() => {
@@ -840,7 +830,7 @@ export default function App() {
         <div className="ambient-glow" />
         <div className="auth-gate-card">
           <div className="auth-gate-avatar">
-            <img src="/logo.png" alt="Waguri Logo" className="auth-gate-logo-img" />
+            <img src="/logo.webp" alt="Waguri Logo" className="auth-gate-logo-img" />
           </div>
           <div className="auth-gate-spinner" />
           <h2 className="auth-gate-title">WAGURI</h2>
@@ -864,7 +854,7 @@ export default function App() {
         <div className="auth-gate-card">
           <div className="auth-gate-header">
             <div className="auth-gate-avatar">
-              <img src="/logo.png" alt="Waguri Logo" className="auth-gate-logo-img" />
+              <img src="/logo.webp" alt="Waguri Logo" className="auth-gate-logo-img" />
             </div>
             <h1 className="auth-gate-title">WAGURI</h1>
             <span className="auth-gate-badge">
@@ -911,7 +901,7 @@ export default function App() {
       <header className="topbar">
         <div className="logo">
           <div className="logo-avatar">
-            <img src="/logo.png" alt="Waguri Logo" className="logo-img" />
+            <img src="/logo.webp" alt="Waguri Logo" className="logo-img" />
           </div>
           <span className="logo-text">WAGURI</span>
         </div>

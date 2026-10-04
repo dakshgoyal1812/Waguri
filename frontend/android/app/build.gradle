@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// FCM push (native notifications) needs a Firebase project: drop the
+// google-services.json you download from the Firebase console next to this
+// file and it activates automatically. Without the file the app still builds
+// (web push still works in browsers; native push just stays disabled).
+def googleServicesFile = file('google-services.json')
+if (googleServicesFile.exists()) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
+    logger.lifecycle('waguri: google-services.json not found - native FCM push disabled')
+}
+
 android {
     namespace = "com.waguri.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +18,8 @@ android {
         applicationId "com.waguri.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "1.0.2"
+        versionCode 4
+        versionName "1.0.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

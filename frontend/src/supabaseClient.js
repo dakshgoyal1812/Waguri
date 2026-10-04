@@ -2,21 +2,14 @@ import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { App as CapApp } from '@capacitor/app';
-import { checkEmailAccess } from './api.js';
+import { BASE_URL } from './lib/apiBase.js';
 
-const supabaseUrl =
-  import.meta.env.VITE_SUPABASE_URL ||
-  import.meta.env.SUPABASE_URL ||
-  import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
-  '';
+// SECURITY: only the publishable/anonymous key belongs in the browser. The
+// Supabase SECRET key must never be referenced by frontend code — it is for the
+// backend only (see backend/src/auth/supabaseAuth.js).
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 
-const supabaseAnonKey =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  import.meta.env.SUPABASE_PUBLISHABLE_KEY ||
-  import.meta.env.SUPABASE_ANON_KEY ||
-  import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
@@ -52,18 +45,24 @@ export const supabase = isSupabaseConfigured
       },
     };
 
-export const DEFAULT_BYPASS_USER = {
-  id: 'dev-bypass-user',
-  email: 'dakshgoyal1812@gmail.com',
-  user_metadata: {
-    full_name: 'Daksh Goyal',
-    name: 'Daksh Goyal',
-    avatar_url: '/logo.png',
-  },
-  app_metadata: {
-    provider: 'bypass',
-  },
-};
+// SECURITY NOTE: there is deliberately NO "bypass user" and NO client-side
+// session creation anywhere in this module. The only trusted session is the
+// Supabase auth session (a cryptographically signed JWT verified by the backend
+// on every API call). Anything written to localStorage by old versions was
+// forgeable, so it is purged below.
+const LEGACY_INSECURE_KEYS = [
+  'waguri_auth_user', // forged-able client-side session (removed)
+  'adminToken', // hardcoded admin token leak (removed)
+  'waguri_admin_token', // hardcoded admin token leak (removed)
+];
+
+export function purgeLegacyAuthKeys() {
+  for (const key of LEGACY_INSECURE_KEYS) {
+    try { localStorage.removeItem(key); } catch {}
+    try { sessionStorage.removeItem(key); } catch {}
+  }
+}
+purgeLegacyAuthKeys();
 
 export const ADMIN_EMAILS = [
   'dakshgoyal1812@gmail.com',
@@ -108,15 +107,41 @@ export async function verifyEmailAccess(email) {
   if (isAdminEmail(clean)) return true;
 
   try {
-    const data = await checkEmailAccess(clean);
-    if (typeof data?.allowed === 'boolean') {
-      return data.allowed;
+    const res = await fetch(`${BASE_URL}/api/auth/verify-access?email=${encodeURIComponent(clean)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data?.allowed === 'boolean') {
+        return data.allowed;
+      }
     }
   } catch (err) {
     console.warn('[auth] Remote email verification offline, using local verification:', err.message);
   }
 
   return isEmailAllowed(clean);
+}
+
+/**
+ * Current Supabase access token (JWT) — the ONLY credential the app sends to the
+ * backend. The backend verifies it against Supabase on every protected call.
+ */
+export async function getAccessToken() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Headers carrying the verified session token. Merge into every backend fetch:
+ *   headers: await getAuthHeaders({ 'Content-Type': 'application/json' })
+ */
+export async function getAuthHeaders(extra = {}) {
+  const token = await getAccessToken();
+  if (!token) return { ...extra };
+  return { ...extra, Authorization: `Bearer ${token}` };
 }
 
 export async function signUpWithEmail(email, password) {

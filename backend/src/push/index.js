@@ -1,7 +1,10 @@
 // Web Push Notification Service for Waguri PWA.
 // 100% free push delivery via standard Web Push protocol + Google FCM / Apple APNs.
+// Native Android (APK) subscriptions arrive as `fcm://<deviceToken>` endpoints and
+// are delivered via FCM HTTP v1 (the WebView has no Web Push API).
 import webpush from 'web-push';
 import { config } from '../config.js';
+import { isFcmConfigured, sendFcmNotification } from './fcm.js';
 
 export function createPushService({ storage, callLLM, getPersona, sendToSub = null }) {
   const rawPublic = (config.push.vapidPublicKey || '').trim().replace(/^["']|["']$/g, '');
@@ -20,12 +23,35 @@ export function createPushService({ storage, callLLM, getPersona, sendToSub = nu
       console.error('[push] failed to set VAPID details:', e.message);
     }
   }
+  console.log('[push] FCM (native Android delivery) configured:', isFcmConfigured());
 
   // Send a push payload to a single subscription
   async function sendToSubscription(sub, payload) {
     if (typeof sendToSub === 'function') {
       return sendToSub(sub, payload);
     }
+
+    // Native Android subscription: endpoint is `fcm://<device-token>`
+    if (typeof sub.endpoint === 'string' && sub.endpoint.startsWith('fcm://')) {
+      const deviceToken = sub.endpoint.slice('fcm://'.length);
+      const result = await sendFcmNotification(deviceToken, {
+        title: payload.title,
+        body: payload.body,
+        icon: payload.icon,
+        tag: payload.tag,
+        url: payload.data?.url,
+        timestamp: payload.timestamp,
+      });
+      if (result.success) return { success: true, endpoint: sub.endpoint };
+      if (result.unregistered) {
+        console.log('[push] FCM token unregistered, removing:', sub.endpoint.slice(0, 40));
+        await storage.deletePushSubscription(sub.endpoint).catch(() => {});
+      } else {
+        console.error('[push] FCM send failed:', result.status, result.error);
+      }
+      return { success: false, endpoint: sub.endpoint, error: result.error, status: result.status };
+    }
+
     const pushSubscription = {
       endpoint: sub.endpoint,
       keys: {

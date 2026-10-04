@@ -24,7 +24,7 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory,
     setLoading(true);
     setStatusMessage(null);
     try {
-      const data = await fetchAllowedUsers(cleanAdminEmail);
+      const data = await fetchAllowedUsers();
       if (data?.users) {
         setUsers(data.users);
       }
@@ -64,7 +64,7 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory,
     setSubmitting(true);
     setStatusMessage(null);
     try {
-      const res = await addAllowedUser(clean, cleanAdminEmail);
+      const res = await addAllowedUser(clean);
       if (res?.users) {
         setUsers(res.users);
       }
@@ -97,7 +97,7 @@ export default function AdminPortal({ isOpen, onClose, adminEmail, onOpenMemory,
     setLoading(true);
     setStatusMessage(null);
     try {
-      const res = await removeAllowedUser(clean, cleanAdminEmail);
+      const res = await removeAllowedUser(clean);
       if (res?.users) {
         setUsers(res.users);
       }
