@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing, Clock, UserRound, Brain } from 'lucide-react';
+import { Volume2, VolumeX, Mic, MicOff, MessageCircle, ImageIcon, ShieldCheck, Sparkles, Bell, BellRing, Clock, UserRound, Brain, Shirt } from 'lucide-react';
 import AvatarCanvas from './components/AvatarCanvas.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import BackgroundPicker from './components/BackgroundPicker.jsx';
@@ -13,11 +13,13 @@ import AdminPortal from './components/AdminPortal.jsx';
 import AlarmModal from './components/AlarmModal.jsx';
 import MemoryInspector from './components/MemoryInspector.jsx';
 import MemoryPasswordModal from './components/MemoryPasswordModal.jsx';
+import AvatarStudioModal from './components/AvatarStudioModal.jsx';
 import { isAdminEmail, DEFAULT_BYPASS_USER } from './supabaseClient.js';
 import { sendMessage, checkBackendHealth, getPersona, fetchIdleComment, getConversationHistory, getLatestConversation, synthesizeToUrl } from './api.js';
 import { useVoiceInput } from './useVoiceInput.js';
 import { BUNDLED_AVATARS, DEFAULT_VRM_URL, getCustomVrmBlob } from './lib/vrmStore.js';
 import { isPushSupported, getExistingSubscription, subscribeToPush, unsubscribeFromPush, sendTestNotification, showLocalNotification } from './lib/pushClient.js';
+import { loadAvatarCustomization, saveAvatarCustomization } from './lib/avatarCustomization.js';
 
 // Natural emotion cycle pool for automatic, subtle idle expression transitions
 const IDLE_EMOTION_POOL = ['relaxed', 'happy', 'neutral', 'curious', 'relaxed', 'happy'];
@@ -147,6 +149,7 @@ export default function App() {
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
   const [isAlarmModalOpen, setIsAlarmModalOpen] = useState(false);
   const [isMemoryPasswordModalOpen, setIsMemoryPasswordModalOpen] = useState(false);
+  const [isAvatarStudioOpen, setIsAvatarStudioOpen] = useState(false);
 
   const handleOpenMemory = () => {
     try {
@@ -166,6 +169,38 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('waguri_active_vrm', activeVrmId); } catch { /* private mode */ }
   }, [activeVrmId]);
+
+  // 3D Avatar Customization (Clothes, Eyes, Hair, Skin, Glow)
+  const [avatarCustomization, setAvatarCustomization] = useState(() =>
+    loadAvatarCustomization(activeVrmId)
+  );
+
+  useEffect(() => {
+    setAvatarCustomization(loadAvatarCustomization(activeVrmId));
+  }, [activeVrmId]);
+
+  const handleCustomizationChange = (newConfig) => {
+    setAvatarCustomization(newConfig);
+    saveAvatarCustomization(activeVrmId, newConfig);
+  };
+
+  const handleResetCustomization = () => {
+    const resetConfig = {
+      presetId: 'original',
+      topsColor: null,
+      bottomsColor: null,
+      shoesColor: null,
+      outfitGlow: false,
+      outfitGlowColor: '#00f0ff',
+      outfitGlowIntensity: 0.5,
+      eyeColor: null,
+      eyeHighlightColor: null,
+      hairColor: null,
+      skinTone: null,
+    };
+    setAvatarCustomization(resetConfig);
+    saveAvatarCustomization(activeVrmId, resetConfig);
+  };
 
   const [vrmUrl, setVrmUrl] = useState(DEFAULT_VRM_URL);
   // Object URLs are cached per avatar id so switching back is instant; they
@@ -781,6 +816,16 @@ export default function App() {
             <Brain size={15} />
             <span className="memory-topbar-btn-text">Memory</span>
           </button>
+          <button
+            type="button"
+            className="wardrobe-topbar-btn"
+            onClick={() => setIsAvatarStudioOpen(true)}
+            title="3D Wardrobe & Avatar Studio (Customize Clothes, Eyes, Hair)"
+            aria-label="3D Wardrobe Studio"
+          >
+            <Sparkles size={15} />
+            <span className="wardrobe-topbar-btn-text">Wardrobe</span>
+          </button>
           {installPrompt && (
             <button
               className="install-pwa-btn"
@@ -813,6 +858,7 @@ export default function App() {
           isSpeaking={isSpeaking}
           chatOpen={chatOpen}
           vrmUrl={vrmUrl}
+          customization={avatarCustomization}
           showRoom={background?.id === 'room'}
           onTouchReaction={(type) => {
             if (type === 'headPat') {
@@ -930,10 +976,22 @@ export default function App() {
             <span className="social-fab__tooltip">Avatar</span>
           </button>
 
-          {/* 5. Stage Wallpaper */}
+          {/* 5. 3D Wardrobe & Clothes Studio */}
+          <button
+            className={`social-fab__button wardrobe ${isAvatarStudioOpen ? 'active' : ''}`}
+            style={{ '--index': 4 }}
+            onClick={() => handleFabAction(() => setIsAvatarStudioOpen(true))}
+            title="3D Wardrobe & Clothes Studio (Customize Outfit, Eyes, Hair)"
+            aria-label="3D Wardrobe Studio"
+          >
+            <Shirt size={19} />
+            <span className="social-fab__tooltip">Wardrobe</span>
+          </button>
+
+          {/* 6. Stage Wallpaper */}
           <button
             className={`social-fab__button wallpaper ${isWallpaperPickerOpen ? 'active' : ''}`}
-            style={{ '--index': 4 }}
+            style={{ '--index': 5 }}
             onClick={() => handleFabAction(() => setIsWallpaperPickerOpen(true))}
             title="Stage Wallpaper (Change background)"
             aria-label="Change Stage Wallpaper"
@@ -942,10 +1000,10 @@ export default function App() {
             <span className="social-fab__tooltip">Wallpaper</span>
           </button>
 
-          {/* 6. Alarms & Voice Reminders */}
+          {/* 7. Alarms & Voice Reminders */}
           <button
             className={`social-fab__button alarm ${isAlarmModalOpen ? 'active' : ''}`}
-            style={{ '--index': 5 }}
+            style={{ '--index': 6 }}
             onClick={() => handleFabAction(() => setIsAlarmModalOpen(true))}
             title="Alarms & Voice Reminders"
             aria-label="Alarms & Voice Reminders"
@@ -954,10 +1012,10 @@ export default function App() {
             <span className="social-fab__tooltip">Alarms</span>
           </button>
 
-          {/* 7. Girlfriend Notifications */}
+          {/* 8. Girlfriend Notifications */}
           <button
             className={`social-fab__button notif ${pushSubscribed ? 'active' : ''}`}
-            style={{ '--index': 6 }}
+            style={{ '--index': 7 }}
             onClick={() => handleFabAction(handleTogglePush)}
             disabled={pushLoading}
             title={
@@ -973,10 +1031,10 @@ export default function App() {
             <span className="social-fab__tooltip">Alerts</span>
           </button>
 
-          {/* 8. Memory Inspector (Brain & RAG vectors - password gated) */}
+          {/* 9. Memory Inspector (Brain & RAG vectors - password gated) */}
           <button
             className={`social-fab__button memory ${currentPath === '/memory' ? 'active' : ''}`}
-            style={{ '--index': 7 }}
+            style={{ '--index': 8 }}
             onClick={() => handleFabAction(handleOpenMemory)}
             title="Memory Inspector (Brain & RAG memories)"
             aria-label="Memory Inspector"
@@ -985,11 +1043,11 @@ export default function App() {
             <span className="social-fab__tooltip">Memory</span>
           </button>
 
-          {/* 9. Admin Access Portal (only visible to authorized admin accounts) */}
+          {/* 10. Admin Access Portal (only visible to authorized admin accounts) */}
           {isAdminEmail(authUser?.email) && (
             <button
               className={`social-fab__button admin ${isAdminPortalOpen ? 'active' : ''}`}
-              style={{ '--index': 8 }}
+              style={{ '--index': 9 }}
               onClick={() => handleFabAction(() => setIsAdminPortalOpen(true))}
               title="Admin Portal (Whitelist & Users)"
               aria-label="Admin Access Portal"
@@ -1024,6 +1082,7 @@ export default function App() {
         onClose={() => setIsAvatarPickerOpen(false)}
         activeId={activeVrmId}
         onSelect={(id) => setActiveVrmId(id)}
+        onOpenStudio={() => setIsAvatarStudioOpen(true)}
       />
 
       <AdminPortal
@@ -1041,6 +1100,15 @@ export default function App() {
         onClose={() => setIsAlarmModalOpen(false)}
         activeVrmId={activeVrmId}
         onPlayAlarmAudio={(url) => playUrl(url)}
+      />
+
+      <AvatarStudioModal
+        isOpen={isAvatarStudioOpen}
+        onClose={() => setIsAvatarStudioOpen(false)}
+        activeAvatarName={BUNDLED_AVATARS.find((a) => a.id === activeVrmId)?.name || 'Custom Model'}
+        customization={avatarCustomization}
+        onChangeCustomization={handleCustomizationChange}
+        onReset={handleResetCustomization}
       />
 
 

@@ -7,6 +7,7 @@ import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import BirdLoader from './BirdLoader.jsx';
 import { DEFAULT_VRM_URL } from '../lib/vrmStore.js';
+import { applyAvatarCustomization } from '../lib/avatarCustomization.js';
 
 const EMOTION_PRESETS = ['happy', 'angry', 'sad', 'surprised', 'relaxed', 'neutral'];
 const VISEME_PRESETS = ['aa', 'ih', 'ou', 'ee', 'oh'];
@@ -244,6 +245,7 @@ export default function AvatarCanvas({
   showRoom = false,
   onModelLoaded = () => {},
   onTouchReaction = () => {},
+  customization = null,
 }) {
   const mountRef = useRef(null);
   const vrmRef = useRef(null);
@@ -257,6 +259,15 @@ export default function AvatarCanvas({
   const [loadProgress, setLoadProgress] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loaderVisible, setLoaderVisible] = useState(true);
+
+  const customizationRef = useRef(customization);
+  customizationRef.current = customization;
+
+  useEffect(() => {
+    if (vrmRef.current && customization) {
+      applyAvatarCustomization(vrmRef.current, customization);
+    }
+  }, [customization]);
   const [loadError, setLoadError] = useState(null);
   const [retryKey, setRetryKey] = useState(0); // bumped by the Retry button
 
@@ -824,6 +835,11 @@ export default function AvatarCanvas({
           // Per-model arm rest pose (world-direction aligned; see the helper).
           armRestPoseRef.current = vrmUrl === DEFAULT_VRM_URL ? null : computeArmRestPose(vrm);
 
+          // Apply any active 3D customization (clothes, eyes, hair, skin)
+          if (customizationRef.current) {
+            applyAvatarCustomization(vrm, customizationRef.current);
+          }
+
           setLoadProgress(100);
           setIsLoaded(true);
           // Wait for first render frames before starting loader fade-out
@@ -840,6 +856,9 @@ export default function AvatarCanvas({
             loaded: () => !!vrmRef.current,
             speaking: () => speakingRef.current,
             energy: () => energyRef.current,
+            applyCustomization: (cfg) => {
+              if (vrmRef.current) applyAvatarCustomization(vrmRef.current, cfg);
+            },
             expressionNames: () =>
               (vrmRef.current?.expressionManager?.expressions || []).map((e) => e.expressionName),
             expressionWeight: (name) =>

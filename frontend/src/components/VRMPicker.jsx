@@ -30,6 +30,7 @@ export default function VRMPicker({
   activeVrmId,
   onSelect,
   onSelectVrm,
+  onOpenStudio,
 }) {
   const currentActiveId = activeId || activeVrmId || 'waguri';
   const handleSelect = onSelect || onSelectVrm || (() => {});
@@ -154,6 +155,51 @@ export default function VRMPicker({
           <p style={{ margin: '0 0 6px', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
             Choose your 3D avatar companion or upload a custom .VRM model. Each avatar speaks with their own unique voice and emotes naturally.
           </p>
+
+          {onOpenStudio && (
+            <div
+              style={{
+                margin: '8px 0 14px',
+                padding: '10px 14px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.15), rgba(245, 158, 11, 0.15))',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f59e0b' }}>
+                  👗 3D Wardrobe & Avatar Customizer
+                </div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+                  Change clothes, eyes, hair & neon glow on your current avatar in real-time!
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenStudio();
+                }}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '9999px',
+                  background: 'linear-gradient(135deg, #ec4899, #f59e0b)',
+                  border: 'none',
+                  color: '#fff',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Customize Look
+              </button>
+            </div>
+          )}
 
           <div className="bg-options">
             {entries.map((a, i) => (
