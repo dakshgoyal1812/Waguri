@@ -9,6 +9,8 @@ import {
   Shuffle,
   Check,
   Zap,
+  Maximize2,
+  Video,
 } from 'lucide-react';
 import {
   OUTFIT_PRESETS,
@@ -25,6 +27,12 @@ export default function AvatarStudioModal({
   customization,
   onChangeCustomization,
   onReset,
+  studioFocus = 'default',
+  onChangeStudioFocus,
+  modelRotation = 0,
+  onChangeModelRotation,
+  customizingPart = 'clothes',
+  onChangeCustomizingPart,
 }) {
   const [activeTab, setActiveTab] = useState('presets'); // 'presets' | 'clothes' | 'eyes' | 'hair'
 
@@ -37,6 +45,7 @@ export default function AvatarStudioModal({
   };
 
   const handleApplyPreset = (preset) => {
+    onChangeCustomizingPart?.('presets');
     update({
       presetId: preset.id,
       ...preset.config,
@@ -51,8 +60,25 @@ export default function AvatarStudioModal({
     }
   };
 
+  const switchTab = (tab) => {
+    setActiveTab(tab);
+    if (tab === 'presets') {
+      onChangeStudioFocus?.('default');
+      onChangeCustomizingPart?.('presets');
+    } else if (tab === 'clothes') {
+      onChangeStudioFocus?.('body');
+      onChangeCustomizingPart?.('clothes');
+    } else if (tab === 'eyes') {
+      onChangeStudioFocus?.('face');
+      onChangeCustomizingPart?.('eyes');
+    } else if (tab === 'hair') {
+      onChangeStudioFocus?.('face');
+      onChangeCustomizingPart?.('hair');
+    }
+  };
+
   return (
-    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
+    <div className="avatar-studio-backdrop" onClick={onClose} role="dialog" aria-modal="true">
       <div
         className="avatar-studio-modal"
         onClick={(e) => e.stopPropagation()}
@@ -83,13 +109,103 @@ export default function AvatarStudioModal({
           </button>
         </div>
 
+        {/* 3D Viewport Live Camera & Rotation Toolbar */}
+        <div className="avatar-studio-viewport-bar">
+          <div className="viewport-bar-group">
+            <span className="viewport-bar-title">🎥 3D Camera:</span>
+            <div className="viewport-bar-chips">
+              <button
+                type="button"
+                className={`viewport-chip ${studioFocus === 'face' ? 'active' : ''}`}
+                onClick={() => onChangeStudioFocus?.('face')}
+                title="Zoom into Face & Eyes"
+              >
+                <Eye size={12} />
+                <span>Face</span>
+              </button>
+              <button
+                type="button"
+                className={`viewport-chip ${studioFocus === 'body' ? 'active' : ''}`}
+                onClick={() => onChangeStudioFocus?.('body')}
+                title="Focus on Outfit & Dress"
+              >
+                <Shirt size={12} />
+                <span>Outfit</span>
+              </button>
+              <button
+                type="button"
+                className={`viewport-chip ${studioFocus === 'shoes' ? 'active' : ''}`}
+                onClick={() => onChangeStudioFocus?.('shoes')}
+                title="Look down at Shoes & Legs"
+              >
+                <span>👠 Shoes</span>
+              </button>
+              <button
+                type="button"
+                className={`viewport-chip ${studioFocus === 'default' ? 'active' : ''}`}
+                onClick={() => onChangeStudioFocus?.('default')}
+                title="Full Body View"
+              >
+                <Maximize2 size={12} />
+                <span>Full</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="viewport-bar-group">
+            <span className="viewport-bar-title">🔄 Rotate 360°:</span>
+            <div className="viewport-bar-chips">
+              <button
+                type="button"
+                className="viewport-chip icon"
+                onClick={() => onChangeModelRotation?.((r) => r - 45)}
+                title="Rotate Left (-45°)"
+              >
+                ⟲ -45°
+              </button>
+              <button
+                type="button"
+                className={`viewport-chip ${Math.round((modelRotation || 0) % 360) === 0 ? 'active' : ''}`}
+                onClick={() => onChangeModelRotation?.(0)}
+                title="Front Angle (0°)"
+              >
+                Front
+              </button>
+              <button
+                type="button"
+                className={`viewport-chip ${Math.round(Math.abs((modelRotation || 0) % 360)) === 90 ? 'active' : ''}`}
+                onClick={() => onChangeModelRotation?.(90)}
+                title="Side Profile (90°)"
+              >
+                Side
+              </button>
+              <button
+                type="button"
+                className={`viewport-chip ${Math.round(Math.abs((modelRotation || 0) % 360)) === 180 ? 'active' : ''}`}
+                onClick={() => onChangeModelRotation?.(180)}
+                title="Back View (180°) - Inspect back of hair & dress"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="viewport-chip icon"
+                onClick={() => onChangeModelRotation?.((r) => r + 45)}
+                title="Rotate Right (+45°)"
+              >
+                +45° ⟳
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Quick Toolbar */}
         <div className="avatar-studio-toolbar">
           <div className="avatar-studio-tabs">
             <button
               type="button"
               className={`avatar-studio-tab ${activeTab === 'presets' ? 'active' : ''}`}
-              onClick={() => setActiveTab('presets')}
+              onClick={() => switchTab('presets')}
             >
               <Sparkles size={15} />
               <span>Style Presets</span>
@@ -97,7 +213,7 @@ export default function AvatarStudioModal({
             <button
               type="button"
               className={`avatar-studio-tab ${activeTab === 'clothes' ? 'active' : ''}`}
-              onClick={() => setActiveTab('clothes')}
+              onClick={() => switchTab('clothes')}
             >
               <Shirt size={15} />
               <span>Clothes & Outfit</span>
@@ -105,7 +221,7 @@ export default function AvatarStudioModal({
             <button
               type="button"
               className={`avatar-studio-tab ${activeTab === 'eyes' ? 'active' : ''}`}
-              onClick={() => setActiveTab('eyes')}
+              onClick={() => switchTab('eyes')}
             >
               <Eye size={15} />
               <span>Eyes & Sparkle</span>
@@ -113,7 +229,7 @@ export default function AvatarStudioModal({
             <button
               type="button"
               className={`avatar-studio-tab ${activeTab === 'hair' ? 'active' : ''}`}
-              onClick={() => setActiveTab('hair')}
+              onClick={() => switchTab('hair')}
             >
               <Scissors size={15} />
               <span>Hair & Skin</span>
@@ -296,7 +412,20 @@ export default function AvatarStudioModal({
               {/* Shoes */}
               <div className="studio-control-group">
                 <div className="studio-group-label">
-                  <span>👠 Shoes & Footwear Color</span>
+                  <div className="flex items-center gap-2">
+                    <span>👠 Shoes & Footwear Color</span>
+                    <button
+                      type="button"
+                      className="studio-view-part-btn"
+                      onClick={() => {
+                        onChangeStudioFocus?.('shoes');
+                        onChangeCustomizingPart?.('shoes');
+                      }}
+                      title="Focus 3D camera on Shoes"
+                    >
+                      Focus 👠
+                    </button>
+                  </div>
                   {current.shoesColor && (
                     <button
                       type="button"
@@ -314,7 +443,11 @@ export default function AvatarStudioModal({
                       type="button"
                       className={`studio-swatch ${current.shoesColor === swatch.color ? 'active' : ''}`}
                       style={{ background: swatch.color }}
-                      onClick={() => update({ shoesColor: swatch.color, presetId: 'custom' })}
+                      onClick={() => {
+                        onChangeStudioFocus?.('shoes');
+                        onChangeCustomizingPart?.('shoes');
+                        update({ shoesColor: swatch.color, presetId: 'custom' });
+                      }}
                       title={swatch.name}
                     />
                   ))}
@@ -322,7 +455,11 @@ export default function AvatarStudioModal({
                     <input
                       type="color"
                       value={current.shoesColor || '#ffffff'}
-                      onChange={(e) => update({ shoesColor: e.target.value, presetId: 'custom' })}
+                      onChange={(e) => {
+                        onChangeStudioFocus?.('shoes');
+                        onChangeCustomizingPart?.('shoes');
+                        update({ shoesColor: e.target.value, presetId: 'custom' });
+                      }}
                     />
                     <span>Custom</span>
                   </label>
@@ -496,7 +633,11 @@ export default function AvatarStudioModal({
                       key={swatch.name}
                       type="button"
                       className={`studio-skin-btn ${current.skinTone === swatch.color ? 'active' : ''}`}
-                      onClick={() => update({ skinTone: swatch.color, presetId: 'custom' })}
+                      onClick={() => {
+                        onChangeStudioFocus?.('face');
+                        onChangeCustomizingPart?.('skin');
+                        update({ skinTone: swatch.color, presetId: 'custom' });
+                      }}
                     >
                       {swatch.color ? (
                         <span className="skin-dot" style={{ background: swatch.color }} />

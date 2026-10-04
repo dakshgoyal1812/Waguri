@@ -150,6 +150,28 @@ export default function App() {
   const [isAlarmModalOpen, setIsAlarmModalOpen] = useState(false);
   const [isMemoryPasswordModalOpen, setIsMemoryPasswordModalOpen] = useState(false);
   const [isAvatarStudioOpen, setIsAvatarStudioOpen] = useState(false);
+  const [studioFocus, setStudioFocus] = useState('default');
+  const [modelRotation, setModelRotation] = useState(0);
+  const [customizingPart, setCustomizingPart] = useState('clothes');
+  const [prevChatOpenBeforeStudio, setPrevChatOpenBeforeStudio] = useState(true);
+
+  const handleOpenStudio = () => {
+    setPrevChatOpenBeforeStudio(chatOpen);
+    setChatOpen(false);
+    setIsAvatarStudioOpen(true);
+    setStudioFocus('default');
+    setModelRotation(0);
+    setCustomizingPart('presets');
+  };
+
+  const handleCloseStudio = () => {
+    setIsAvatarStudioOpen(false);
+    setStudioFocus('default');
+    setModelRotation(0);
+    if (prevChatOpenBeforeStudio) {
+      setChatOpen(true);
+    }
+  };
 
   const handleOpenMemory = () => {
     try {
@@ -819,7 +841,7 @@ export default function App() {
           <button
             type="button"
             className="wardrobe-topbar-btn"
-            onClick={() => setIsAvatarStudioOpen(true)}
+            onClick={handleOpenStudio}
             title="3D Wardrobe & Avatar Studio (Customize Clothes, Eyes, Hair)"
             aria-label="3D Wardrobe Studio"
           >
@@ -860,6 +882,12 @@ export default function App() {
           vrmUrl={vrmUrl}
           customization={avatarCustomization}
           showRoom={background?.id === 'room'}
+          isStudioOpen={isAvatarStudioOpen}
+          studioFocus={studioFocus}
+          modelRotation={modelRotation}
+          onRotateModel={setModelRotation}
+          customizingPart={customizingPart}
+          onFocusChange={setStudioFocus}
           onTouchReaction={(type) => {
             if (type === 'headPat') {
               setCurrentEmotion('relaxed');
@@ -980,7 +1008,7 @@ export default function App() {
           <button
             className={`social-fab__button wardrobe ${isAvatarStudioOpen ? 'active' : ''}`}
             style={{ '--index': 4 }}
-            onClick={() => handleFabAction(() => setIsAvatarStudioOpen(true))}
+            onClick={() => handleFabAction(handleOpenStudio)}
             title="3D Wardrobe & Clothes Studio (Customize Outfit, Eyes, Hair)"
             aria-label="3D Wardrobe Studio"
           >
@@ -1082,7 +1110,7 @@ export default function App() {
         onClose={() => setIsAvatarPickerOpen(false)}
         activeId={activeVrmId}
         onSelect={(id) => setActiveVrmId(id)}
-        onOpenStudio={() => setIsAvatarStudioOpen(true)}
+        onOpenStudio={handleOpenStudio}
       />
 
       <AdminPortal
@@ -1104,11 +1132,17 @@ export default function App() {
 
       <AvatarStudioModal
         isOpen={isAvatarStudioOpen}
-        onClose={() => setIsAvatarStudioOpen(false)}
+        onClose={handleCloseStudio}
         activeAvatarName={BUNDLED_AVATARS.find((a) => a.id === activeVrmId)?.name || 'Custom Model'}
         customization={avatarCustomization}
         onChangeCustomization={handleCustomizationChange}
         onReset={handleResetCustomization}
+        studioFocus={studioFocus}
+        onChangeStudioFocus={setStudioFocus}
+        modelRotation={modelRotation}
+        onChangeModelRotation={setModelRotation}
+        customizingPart={customizingPart}
+        onChangeCustomizingPart={setCustomizingPart}
       />
 
 

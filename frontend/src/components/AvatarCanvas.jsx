@@ -246,6 +246,12 @@ export default function AvatarCanvas({
   onModelLoaded = () => {},
   onTouchReaction = () => {},
   customization = null,
+  isStudioOpen = false,
+  studioFocus = 'default',
+  modelRotation = 0,
+  onRotateModel = null,
+  customizingPart = null,
+  onFocusChange = null,
 }) {
   const mountRef = useRef(null);
   const vrmRef = useRef(null);
@@ -262,6 +268,17 @@ export default function AvatarCanvas({
 
   const customizationRef = useRef(customization);
   customizationRef.current = customization;
+
+  const isStudioOpenRef = useRef(isStudioOpen);
+  const studioFocusRef = useRef(studioFocus);
+  const modelRotationRef = useRef(modelRotation);
+  const onRotateModelRef = useRef(onRotateModel);
+  const baseModelRotYRef = useRef(0);
+
+  useEffect(() => { isStudioOpenRef.current = isStudioOpen; }, [isStudioOpen]);
+  useEffect(() => { studioFocusRef.current = studioFocus; }, [studioFocus]);
+  useEffect(() => { modelRotationRef.current = modelRotation; }, [modelRotation]);
+  useEffect(() => { onRotateModelRef.current = onRotateModel; }, [onRotateModel]);
 
   useEffect(() => {
     if (vrmRef.current && customization) {
@@ -511,11 +528,76 @@ export default function AvatarCanvas({
     const scene = new THREE.Scene();
 
     // Responsive camera framing for phones vs tablets vs desktop
-    const getTargetCameraParams = (w, h, isChatOpen, tier) => {
+    const getTargetCameraParams = (w, h, isChatOpen, tier, isStudio, focus) => {
       const currentTier = tier || getDeviceTier();
       const isDesktop = isLaptopOrDesktop(w);
       const aspect = w / h;
 
+      if (isStudio) {
+        // --- 3D WARDROBE & AVATAR STUDIO MODE ---
+        // On desktop/laptop: character is shifted left (-0.28 to -0.32) so she sits centered in the open viewport beside the right studio drawer
+        // On mobile: character is framed in the upper half of screen above the bottom sheet
+        if (isDesktop && currentTier !== 'mobile') {
+          if (focus === 'face') {
+            return {
+              pos: new THREE.Vector3(-0.24, 1.38, 1.05),
+              look: new THREE.Vector3(-0.14, 1.34, 0),
+              fov: 24,
+            };
+          }
+          if (focus === 'shoes') {
+            return {
+              pos: new THREE.Vector3(-0.25, 0.40, 1.55),
+              look: new THREE.Vector3(-0.14, 0.22, 0),
+              fov: 28,
+            };
+          }
+          if (focus === 'body') {
+            return {
+              pos: new THREE.Vector3(-0.28, 1.02, 1.70),
+              look: new THREE.Vector3(-0.15, 0.94, 0),
+              fov: 32,
+            };
+          }
+          // Default / Full in Studio
+          return {
+            pos: new THREE.Vector3(-0.30, 0.90, 2.22),
+            look: new THREE.Vector3(-0.16, 0.86, 0),
+            fov: 35,
+          };
+        }
+
+        // Mobile Studio Framing (upper half of screen)
+        if (focus === 'face') {
+          return {
+            pos: new THREE.Vector3(0, 1.34, 1.08),
+            look: new THREE.Vector3(0, 1.32, 0),
+            fov: 26,
+          };
+        }
+        if (focus === 'shoes') {
+          return {
+            pos: new THREE.Vector3(0, 0.44, 1.50),
+            look: new THREE.Vector3(0, 0.22, 0),
+            fov: 28,
+          };
+        }
+        if (focus === 'body') {
+          return {
+            pos: new THREE.Vector3(0, 1.06, 1.72),
+            look: new THREE.Vector3(0, 0.96, 0),
+            fov: 32,
+          };
+        }
+        // Default / Full on mobile
+        return {
+          pos: new THREE.Vector3(0, 1.15, 2.30),
+          look: new THREE.Vector3(0, 0.90, 0),
+          fov: 36,
+        };
+      }
+
+      // --- STANDARD COMPANION MODE ---
       if (currentTier === 'mobile' || aspect < 0.75 || !isDesktop) {
         // Phone portrait: standard centered framing, zero clipping from 3D room meshes
         return {
@@ -558,7 +640,14 @@ export default function AvatarCanvas({
     };
 
     const currentLook = new THREE.Vector3(0, 0.94, 0);
-    const initialParams = getTargetCameraParams(width, height, chatOpenRef.current, tierRef.current);
+    const initialParams = getTargetCameraParams(
+      width,
+      height,
+      chatOpenRef.current,
+      tierRef.current,
+      isStudioOpenRef.current,
+      studioFocusRef.current
+    );
 
     const camera = new THREE.PerspectiveCamera(initialParams.fov, width / height, 0.1, 20);
     camera.position.copy(initialParams.pos);
@@ -835,6 +924,9 @@ export default function AvatarCanvas({
           // Per-model arm rest pose (world-direction aligned; see the helper).
           armRestPoseRef.current = vrmUrl === DEFAULT_VRM_URL ? null : computeArmRestPose(vrm);
 
+          // Record model base rotation Y (VRM0 rotated models will have base rotation)
+          baseModelRotYRef.current = vrm.scene.rotation.y;
+
           // Apply any active 3D customization (clothes, eyes, hair, skin)
           if (customizationRef.current) {
             applyAvatarCustomization(vrm, customizationRef.current);
@@ -963,18 +1055,35 @@ export default function AvatarCanvas({
     const onWinResize = () => handleResize(container.clientWidth, container.clientHeight);
     window.addEventListener('resize', onWinResize);
 
-    // ---- Interactive Touch Reactions (Head Pat & Shoulder Tap) via Raycasting ----
+    // ---- Interactive Touch Reactions & Studio Drag Rotation ----
     let downX = 0;
     let downY = 0;
+    let lastDragX = 0;
+    let isDraggingStudio = false;
     let downTime = 0;
 
     const onPointerDown = (e) => {
       downX = e.clientX;
       downY = e.clientY;
+      lastDragX = e.clientX;
       downTime = performance.now();
+      if (isStudioOpenRef.current) {
+        isDraggingStudio = true;
+      }
+    };
+
+    const onPointerMove = (e) => {
+      if (isDraggingStudio && isStudioOpenRef.current) {
+        const dx = e.clientX - lastDragX;
+        lastDragX = e.clientX;
+        if (Math.abs(dx) > 0.4 && onRotateModelRef.current) {
+          onRotateModelRef.current((prev) => prev - dx * 0.45);
+        }
+      }
     };
 
     const onPointerUp = (e) => {
+      isDraggingStudio = false;
       const dt = performance.now() - downTime;
       const dist = Math.hypot(e.clientX - downX, e.clientY - downY);
       // Only count as intentional tap/click if short duration (<450ms) and minimal drag (<15px)
@@ -1025,7 +1134,8 @@ export default function AvatarCanvas({
     };
 
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
-    renderer.domElement.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('pointerup', onPointerUp, { passive: true });
 
     // Animation Loop
     const clock = new THREE.Clock();
@@ -1082,14 +1192,34 @@ export default function AvatarCanvas({
       const elapsed = clock.getElapsedTime();
 
       // Smooth camera interpolation for responsive phone/desktop & chat toggle transitions
-      const targetParams = getTargetCameraParams(width, height, chatOpenRef.current, currentTier);
-      const camLerpSpeed = Math.min(1, delta * 3.5);
+      const targetParams = getTargetCameraParams(
+        width,
+        height,
+        chatOpenRef.current,
+        currentTier,
+        isStudioOpenRef.current,
+        studioFocusRef.current
+      );
+      const camLerpSpeed = Math.min(1, delta * 4.5);
       camera.position.lerp(targetParams.pos, camLerpSpeed);
       currentLook.lerp(targetParams.look, camLerpSpeed);
       camera.lookAt(currentLook);
       if (Math.abs(camera.fov - targetParams.fov) > 0.05) {
         camera.fov += (targetParams.fov - camera.fov) * camLerpSpeed;
         camera.updateProjectionMatrix();
+      }
+
+      // Live 360° Character Angle Rotation in Studio Mode
+      if (vrm && vrm.scene) {
+        const baseRot = baseModelRotYRef.current || 0;
+        const targetRotY = isStudioOpenRef.current
+          ? baseRot + (((modelRotationRef.current || 0) * Math.PI) / 180)
+          : baseRot;
+        vrm.scene.rotation.y = THREE.MathUtils.lerp(
+          vrm.scene.rotation.y,
+          targetRotY,
+          Math.min(1, delta * 7)
+        );
       }
 
 
@@ -1476,7 +1606,8 @@ export default function AvatarCanvas({
       resizeObserver?.disconnect();
       window.removeEventListener('resize', onWinResize);
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
-      renderer.domElement.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
       cleanupModel?.();
       renderer.dispose();
       if (container.contains(renderer.domElement)) {
@@ -1490,6 +1621,107 @@ export default function AvatarCanvas({
       {loaderVisible && !loadError && (
         <div className={`vrm-loading-wrapper ${isLoaded ? 'fade-out' : ''}`}>
           <BirdLoader progress={loadProgress} />
+        </div>
+      )}
+
+      {isStudioOpen && isLoaded && (
+        <div className="canvas-studio-hud">
+          <div className="canvas-studio-hud__badge">
+            <span className="hud-pulse-dot" />
+            <span className="hud-title">3D Live Studio</span>
+            <span className="hud-part-label">
+              {customizingPart === 'eyes'
+                ? '👁️ Viewing: Eyes & Iris'
+                : customizingPart === 'clothes'
+                ? '👗 Viewing: Outfit & Dress'
+                : customizingPart === 'shoes'
+                ? '👠 Viewing: Shoes & Footwear'
+                : customizingPart === 'hair'
+                ? '✂️ Viewing: Hair & Face'
+                : customizingPart === 'skin'
+                ? '🌸 Viewing: Skin Tone'
+                : '✨ Live 3D Preview'}
+            </span>
+          </div>
+          <div className="canvas-studio-hud__bar">
+            <div className="hud-focus-chips">
+              <button
+                type="button"
+                className={`hud-chip ${studioFocus === 'face' ? 'active' : ''}`}
+                onClick={() => onFocusChange?.('face')}
+                title="Zoom into Face & Eyes"
+              >
+                👁️ Face
+              </button>
+              <button
+                type="button"
+                className={`hud-chip ${studioFocus === 'body' ? 'active' : ''}`}
+                onClick={() => onFocusChange?.('body')}
+                title="Focus Outfit & Dress"
+              >
+                👗 Outfit
+              </button>
+              <button
+                type="button"
+                className={`hud-chip ${studioFocus === 'shoes' ? 'active' : ''}`}
+                onClick={() => onFocusChange?.('shoes')}
+                title="View Shoes & Legs"
+              >
+                👠 Shoes
+              </button>
+              <button
+                type="button"
+                className={`hud-chip ${studioFocus === 'default' ? 'active' : ''}`}
+                onClick={() => onFocusChange?.('default')}
+                title="Full Body View"
+              >
+                🧍 Full
+              </button>
+            </div>
+            <div className="hud-rotate-chips">
+              <button
+                type="button"
+                className="hud-chip icon"
+                onClick={() => onRotateModel?.((r) => r - 45)}
+                title="Turn Left (-45°)"
+              >
+                ⟲
+              </button>
+              <button
+                type="button"
+                className={`hud-chip ${Math.round((modelRotation || 0) % 360) === 0 ? 'active' : ''}`}
+                onClick={() => onRotateModel?.(0)}
+                title="Front View"
+              >
+                Front
+              </button>
+              <button
+                type="button"
+                className={`hud-chip ${Math.round(Math.abs((modelRotation || 0) % 360)) === 90 ? 'active' : ''}`}
+                onClick={() => onRotateModel?.(90)}
+                title="Side View"
+              >
+                Side
+              </button>
+              <button
+                type="button"
+                className={`hud-chip ${Math.round(Math.abs((modelRotation || 0) % 360)) === 180 ? 'active' : ''}`}
+                onClick={() => onRotateModel?.(180)}
+                title="Back View (inspect back of hair & outfit)"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="hud-chip icon"
+                onClick={() => onRotateModel?.((r) => r + 45)}
+                title="Turn Right (+45°)"
+              >
+                ⟳
+              </button>
+            </div>
+            <span className="hud-drag-tip">💡 Drag 3D character to rotate 360°</span>
+          </div>
         </div>
       )}
 
