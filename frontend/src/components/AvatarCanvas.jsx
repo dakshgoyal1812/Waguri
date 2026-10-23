@@ -1030,7 +1030,14 @@ export default function AvatarCanvas({
       }
 
       camera.aspect = width / height;
-      const targetParams = getTargetCameraParams(width, height, chatOpenRef.current, tierRef.current);
+      const targetParams = getTargetCameraParams(
+        width,
+        height,
+        chatOpenRef.current,
+        tierRef.current,
+        isStudioOpenRef.current,
+        studioFocusRef.current
+      );
       camera.fov = targetParams.fov;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
@@ -1209,6 +1216,8 @@ export default function AvatarCanvas({
         camera.updateProjectionMatrix();
       }
 
+      const vrm = vrmRef.current;
+
       // Live 360° Character Angle Rotation in Studio Mode
       if (vrm && vrm.scene) {
         const baseRot = baseModelRotYRef.current || 0;
@@ -1222,8 +1231,6 @@ export default function AvatarCanvas({
         );
       }
 
-
-      const vrm = vrmRef.current;
       if (vrm) {
         const humanoid = vrm.humanoid;
         let finalHeadZ = 0;
