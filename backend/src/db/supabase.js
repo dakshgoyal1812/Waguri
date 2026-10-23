@@ -5,7 +5,11 @@ import pg from 'pg';
 import { encryptMessage, decryptMessage } from '../crypto.js';
 
 export function createSupabaseStorage(databaseUrl) {
-  const pool = new pg.Pool({ connectionString: databaseUrl, max: 5 });
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    max: 5,
+    connectionTimeoutMillis: 5000,
+  });
 
   return {
     kind: 'supabase',

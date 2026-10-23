@@ -28,7 +28,15 @@ export async function createStorage() {
     await s.init();
     return s;
   }
-  const s = createSupabaseStorage(config.databaseUrl);
-  await s.init();
-  return s;
+  try {
+    const s = createSupabaseStorage(config.databaseUrl);
+    await s.init();
+    return s;
+  } catch (err) {
+    console.error('[storage] Failed to connect to Supabase database:', err.message);
+    console.warn('[storage] Falling back to in-memory storage so the backend server stays operational.');
+    const s = createMemoryStorage();
+    await s.init();
+    return s;
+  }
 }
